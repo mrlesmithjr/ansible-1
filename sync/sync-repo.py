@@ -120,7 +120,6 @@ def main():
 
     else:
         logger.info("No upstream changes found.")
-
     logger.info('Finished')
 
 def check_origin_changes(repo):
