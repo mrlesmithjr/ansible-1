@@ -131,6 +131,19 @@ requires Python 2, you can also report a bug on our `bug tracker
 
 Do not replace the shebang lines of your python modules.  Ansible will do this for you automatically at deploy time.
 
+.. _installation_faqs:
+
+How do I handle the package dependencies required by Ansible package dependencies during Ansible installation ?
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+While installing Ansible, sometimes you may encounter errors such as `No package 'libffi' found` or `fatal error: Python.h: No such file or directory`
+These errors are generally caused by the missing packages which are dependencies of the packages required by Ansible.
+For example, `libffi` package is dependency of `pynacl` and `paramiko` (Ansible -> paramiko -> pynacl -> libffi).
+
+In order to solve these kinds of dependency issue, you may need to install required packages using the OS native package managers (e.g., `yum`, `dnf` or `apt`) or as mentioned in the package installation guide.
+
+Please refer the documentation of the respective package for such dependencies and their installation methods.
+
 Common Platform Issues
 ++++++++++++++++++++++
 
@@ -195,7 +208,7 @@ is likely the problem. There are several workarounds:
 
     solaris1 ansible_remote_tmp=$HOME/.ansible/tmp
 
-* You can set :ref:`ansible_shell_executable` to the path to a POSIX compatible shell.  For
+* You can set :ref:`ansible_shell_executable<ansible_shell_executable>` to the path to a POSIX compatible shell.  For
   instance, many Solaris hosts have a POSIX shell located at :file:`/usr/xpg4/bin/sh` so you can set
   this in inventory like so::
 
@@ -364,6 +377,7 @@ The mkpasswd utility that is available on most Linux systems is a great option:
 .. code-block:: shell-session
 
     mkpasswd --method=sha-512
+    
 
 If this utility is not installed on your system (e.g. you are using OS X) then you can still easily
 generate these passwords using Python. First, ensure that the `Passlib <https://bitbucket.org/ecollins/passlib/wiki/Home>`_
@@ -381,6 +395,12 @@ Once the library is ready, SHA512 password values can then be generated as follo
 
 Use the integrated :ref:`hash_filters` to generate a hashed version of a password.
 You shouldn't put plaintext passwords in your playbook or host_vars; instead, use :doc:`../user_guide/playbooks_vault` to encrypt sensitive data.
+
+In OpenBSD, a similar option is available in the base system called encrypt(1):
+
+.. code-block:: shell-session
+
+    encrypt
 
 .. _commercial_support:
 

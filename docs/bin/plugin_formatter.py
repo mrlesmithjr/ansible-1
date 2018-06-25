@@ -94,7 +94,7 @@ def rst_ify(text):
         t = _MODULE.sub(r":ref:`\1 <\1_module>`", t)
         t = _LINK.sub(r"`\1 <\2>`_", t)
         t = _URL.sub(r"\1", t)
-        t = _CONST.sub(r"`\1`", t)
+        t = _CONST.sub(r"``\1``", t)
         t = _RULER.sub(r"------------", t)
     except Exception as e:
         raise AnsibleError("Could not process (%s) : %s" % (text, e))
@@ -251,7 +251,7 @@ def get_plugin_info(module_dir, limit_to=None, verbose=False):
         module_info[module] = {'path': module_path,
                                'source': os.path.relpath(module_path, module_dir),
                                'deprecated': deprecated,
-                               'aliases': set(),
+                               'aliases': module_info[module].get('aliases', set()),
                                'metadata': metadata,
                                'doc': doc,
                                'examples': examples,

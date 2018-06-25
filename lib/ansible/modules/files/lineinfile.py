@@ -40,6 +40,7 @@ options:
     aliases: [ dest, destfile, name ]
     required: true
   regexp:
+    aliases: [ 'regex' ]
     description:
       - The regular expression to look for in every line of the file. For
         C(state=present), the pattern to replace if found. Only the last line
@@ -59,7 +60,7 @@ options:
         expanded with the C(regexp) capture groups if the regexp matches.
   backrefs:
     description:
-      - Used with C(state=present). If set, line can contain backreferences
+      - Used with C(state=present). If set, C(line) can contain backreferences
         (both positional and named) that will get populated if the C(regexp)
         matches. This flag changes the operation of the module slightly;
         C(insertbefore) and C(insertafter) will be ignored, and if the C(regexp)
@@ -459,7 +460,7 @@ def main():
         argument_spec=dict(
             path=dict(type='path', required=True, aliases=['dest', 'destfile', 'name']),
             state=dict(type='str', default='present', choices=['absent', 'present']),
-            regexp=dict(type='str'),
+            regexp=dict(type='str', aliases=['regex']),
             line=dict(type='str', aliases=['value']),
             insertafter=dict(type='str'),
             insertbefore=dict(type='str'),

@@ -221,10 +221,10 @@ EXAMPLES = """
 - name: load an acl into the device
   eos_config:
     lines:
-      - 10 permit ip 1.1.1.1/32 any log
-      - 20 permit ip 2.2.2.2/32 any log
-      - 30 permit ip 3.3.3.3/32 any log
-      - 40 permit ip 4.4.4.4/32 any log
+      - 10 permit ip 192.0.2.1/32 any log
+      - 20 permit ip 192.0.2.2/32 any log
+      - 30 permit ip 192.0.2.3/32 any log
+      - 40 permit ip 192.0.2.4/32 any log
     parents: ip access-list test
     before: no ip access-list test
     replace: block
@@ -410,7 +410,7 @@ def main():
 
             result['changed'] = True
 
-    running_config = None
+    running_config = module.params['running_config']
     startup_config = None
 
     diff_ignore_lines = module.params['diff_ignore_lines']
@@ -435,7 +435,7 @@ def main():
             output = run_commands(module, {'command': 'show running-config', 'output': 'text'})
             contents = output[0]
         else:
-            contents = running_config.config_text
+            contents = running_config
 
         # recreate the object in order to process diff_ignore_lines
         running_config = NetworkConfig(indent=1, contents=contents, ignore_lines=diff_ignore_lines)

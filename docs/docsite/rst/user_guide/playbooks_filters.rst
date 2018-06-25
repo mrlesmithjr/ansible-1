@@ -127,10 +127,8 @@ Flatten a list (same thing the `flatten` lookup does)::
 
 Flatten only the first level of a list (akin to the `items` lookup)::
 
-    {{ [3, [4, [2]] ]|flatten(level=1) }}
+    {{ [3, [4, [2]] ]|flatten(levels=1) }}
 
-
-To get the minimum value from list of numbers::
 
 .. _set_theory_filters:
 
@@ -185,6 +183,81 @@ into::
       value: payment
     - key: Environment
       value: dev
+
+subelements Filter
+``````````````````
+
+.. versionadded:: 2.7
+
+Produces a product of an object, and subelement values of that object, similar to the ``subelements`` lookup::
+
+    {{ users|subelements('groups', skip_missing=True) }}
+
+Which turns::
+
+    users:
+      - name: alice
+        authorized:
+          - /tmp/alice/onekey.pub
+          - /tmp/alice/twokey.pub
+        groups:
+          - wheel
+          - docker
+      - name: bob
+        authorized:
+          - /tmp/bob/id_rsa.pub
+        groups:
+          - docker
+
+Into::
+
+    -
+      - name: alice
+        groups:
+          - wheel
+          - docker
+        authorized:
+          - /tmp/alice/onekey.pub
+      - wheel
+    -
+      - name: alice
+        groups:
+          - wheel
+          - docker
+        authorized:
+          - /tmp/alice/onekey.pub
+      - docker
+    -
+      - name: bob
+        authorized:
+          - /tmp/bob/id_rsa.pub
+        groups:
+          - docker
+      - docker
+
+An example of using this filter with ``loop``::
+
+    - name: Set authorized ssh key, extracting just that data from 'users'
+      authorized_key:
+        user: "{{ item.0.name }}"
+        key: "{{ lookup('file', item.1) }}"
+      loop: "{{ users|subelements('authorized') }}"
+
+.. _random_mac_filter:
+
+Random Mac Address Filter
+`````````````````````````
+
+.. versionadded:: 2.6
+
+This filter can be used to generate a random MAC address from a string prefix.
+
+To get a random MAC address from a string prefix starting with '52:54:00'::
+
+    "{{ '52:54:00'|random_mac }}"
+    # => '52:54:00:ef:1c:03'
+
+Note that if anything is wrong with the prefix string, the filter will issue an error.
 
 .. _random_filter:
 
@@ -384,9 +457,7 @@ Network CLI filters
 To convert the output of a network device CLI command into structured JSON
 output, use the ``parse_cli`` filter::
 
-.. code-block:: yaml
-
-  {{ output | parse_cli('path/to/spec') }}
+    {{ output | parse_cli('path/to/spec') }}
 
 
 The ``parse_cli`` filter will load the spec file and pass the command output
@@ -472,7 +543,7 @@ The network filters also support parsing the output of a CLI command using the
 TextFSM library.  To parse the CLI output with TextFSM use the following
 filter::
 
-  {{ output | parse_cli_textfsm('path/to/fsm') }}
+  {{ output.stdout[0] | parse_cli_textfsm('path/to/fsm') }}
 
 Use of the TextFSM filter requires the TextFSM library to be installed.
 
@@ -831,6 +902,9 @@ To search a string with a regex, use the "regex_search" filter::
 
     # will return empty if it cannot find a match
     {{ 'ansible' | regex_search('(foobar)') }}
+    
+    # case insensitive search in multiline mode
+    {{ 'foo\nBAR' | regex_search("^bar", multiline=True, ignorecase=True) }}
 
 
 To search for all occurrences of regex matches, use the "regex_findall" filter::
@@ -852,6 +926,9 @@ To replace text in a string with regex, use the "regex_replace" filter::
 
     # convert "localhost:80" to "localhost"
     {{ 'localhost:80' | regex_replace(':80') }}
+    
+    # add "https://" prefix to each item in a list
+    {{ hosts | map('regex_replace', '^(.*)$', 'https://\\1') | list }}
 
 .. note:: Prior to ansible 2.0, if "regex_replace" filter was used with variables inside YAML arguments (as opposed to simpler 'key=value' arguments),
    then you needed to escape backreferences (e.g. ``\\1``) with 4 backslashes (``\\\\``) instead of 2 (``\\``).
@@ -936,6 +1013,13 @@ To work with Base64 encoded strings::
 
     {{ encoded | b64decode }}
     {{ decoded | b64encode }}
+
+As of version 2.6, you can define the type of encoding to use, the default is ``utf-8``::
+
+    {{ encoded | b64decode(encoding='utf-16-le') }}
+    {{ decoded | b64encode(encoding='utf-16-le') }}
+
+.. versionadded:: 2.6
 
 To create a UUID from a string (new in version 1.9)::
 

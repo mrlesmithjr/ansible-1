@@ -285,6 +285,8 @@ class InventoryManager(object):
                         display.warning(u'\n* Failed to parse %s with %s plugin: %s' % (to_text(fail['src']), fail['plugin'], to_text(fail['exc'])))
                         if hasattr(fail['exc'], 'tb'):
                             display.vvv(to_text(fail['exc'].tb))
+                    if C.INVENTORY_ANY_UNPARSED_IS_FAILED:
+                        raise AnsibleError(u'Completely failed to parse inventory source %s' % (to_text(source)))
         if not parsed:
             display.warning("Unable to parse %s as an inventory source" % to_text(source))
 
@@ -375,7 +377,7 @@ class InventoryManager(object):
                     from random import shuffle
                     shuffle(hosts)
                 elif order not in [None, 'inventory']:
-                    AnsibleOptionsError("Invalid 'order' specified for inventory hosts: %s" % order)
+                    raise AnsibleOptionsError("Invalid 'order' specified for inventory hosts: %s" % order)
 
         return hosts
 
@@ -544,8 +546,10 @@ class InventoryManager(object):
             if implicit:
                 results.append(implicit)
 
-        if not results and pattern != 'all':
+        # Display warning if specified host pattern did not match any groups or hosts
+        if not results and not matching_groups and pattern != 'all':
             display.warning("Could not match supplied host pattern, ignoring: %s" % pattern)
+
         return results
 
     def list_hosts(self, pattern="all"):
