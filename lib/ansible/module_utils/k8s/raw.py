@@ -19,13 +19,16 @@
 from __future__ import absolute_import, division, print_function
 
 
+from ansible.module_utils.six import string_types
 from ansible.module_utils.k8s.common import KubernetesAnsibleModule
+from ansible.module_utils.common.dict_transformations import dict_merge
 
 
 try:
+    import yaml
     from openshift.dynamic.exceptions import DynamicApiError, NotFoundError, ConflictError
 except ImportError:
-    # Exception handled in common
+    # Exceptions handled in common
     pass
 
 
@@ -49,7 +52,15 @@ class KubernetesRawModule(KubernetesAnsibleModule):
         namespace = self.params.pop('namespace')
         resource_definition = self.params.pop('resource_definition')
         if resource_definition:
-            self.resource_definitions = [resource_definition]
+            if isinstance(resource_definition, string_types):
+                try:
+                    self.resource_definitions = yaml.safe_load_all(resource_definition)
+                except (IOError, yaml.YAMLError) as exc:
+                    self.fail(msg="Error loading resource_definition: {0}".format(exc))
+            elif isinstance(resource_definition, list):
+                self.resource_definitions = resource_definition
+            else:
+                self.resource_definitions = [resource_definition]
         src = self.params.pop('src')
         if src:
             self.resource_definitions = self.load_resource_definitions(src)
@@ -93,8 +104,8 @@ class KubernetesRawModule(KubernetesAnsibleModule):
 
     def perform_action(self, resource, definition):
         result = {'changed': False, 'result': {}}
-        state = self.params.pop('state', None)
-        force = self.params.pop('force', False)
+        state = self.params.get('state', None)
+        force = self.params.get('force', False)
         name = definition.get('metadata', {}).get('name')
         namespace = definition.get('metadata', {}).get('namespace')
         existing = None
@@ -133,7 +144,9 @@ class KubernetesRawModule(KubernetesAnsibleModule):
                 return result
         else:
             if not existing:
-                if not self.check_mode:
+                if self.check_mode:
+                    k8s_obj = definition
+                else:
                     try:
                         k8s_obj = resource.create(definition, namespace=namespace)
                     except ConflictError:
@@ -143,7 +156,7 @@ class KubernetesRawModule(KubernetesAnsibleModule):
                         self.warn("{0} was not found, but creating it returned a 409 Conflict error. This can happen \
                                   if the resource you are creating does not directly create a resource of the same kind.".format(name))
                         return result
-                    result['result'] = k8s_obj.to_dict()
+                result['result'] = k8s_obj.to_dict()
                 result['changed'] = True
                 result['method'] = 'create'
                 return result
@@ -152,28 +165,32 @@ class KubernetesRawModule(KubernetesAnsibleModule):
             diffs = []
 
             if existing and force:
-                if not self.check_mode:
+                if self.check_mode:
+                    k8s_obj = definition
+                else:
                     try:
                         k8s_obj = resource.replace(definition, name=name, namespace=namespace).to_dict()
-                        match, diffs = self.diff_objects(existing.to_dict(), k8s_obj)
-                        result['result'] = k8s_obj
                     except DynamicApiError as exc:
                         self.fail_json(msg="Failed to replace object: {0}".format(exc.body),
                                        error=exc.status, status=exc.status, reason=exc.reason)
+                match, diffs = self.diff_objects(existing.to_dict(), k8s_obj)
+                result['result'] = k8s_obj
                 result['changed'] = not match
                 result['method'] = 'replace'
                 result['diff'] = diffs
                 return result
 
             # Differences exist between the existing obj and requested params
-            if not self.check_mode:
+            if self.check_mode:
+                k8s_obj = dict_merge(existing.to_dict(), definition)
+            else:
                 try:
                     k8s_obj = resource.patch(definition, name=name, namespace=namespace).to_dict()
-                    match, diffs = self.diff_objects(existing.to_dict(), k8s_obj)
-                    result['result'] = k8s_obj
                 except DynamicApiError as exc:
                     self.fail_json(msg="Failed to patch object: {0}".format(exc.body),
                                    error=exc.status, status=exc.status, reason=exc.reason)
+            match, diffs = self.diff_objects(existing.to_dict(), k8s_obj)
+            result['result'] = k8s_obj
             result['changed'] = not match
             result['method'] = 'patch'
             result['diff'] = diffs
