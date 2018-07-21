@@ -33,6 +33,7 @@ $skipscripts = Get-AnsibleParam -obj $params -name "skip_scripts" -type "bool" -
 $proxy_url = Get-AnsibleParam -obj $params -name "proxy_url" -type "str"
 $proxy_username = Get-AnsibleParam -obj $params -name "proxy_username" -type "str"
 $proxy_password = Get-AnsibleParam -obj $params -name "proxy_password" -type "str" -failifempty ($proxy_username -ne $null)
+$architecture = Get-AnsibleParam -obj $params -name "architecture"  -type "str" -default "default" -validateset "default","x86"
 
 $result = @{
     changed = $false 
@@ -48,8 +49,17 @@ Function Chocolatey-Install-Upgrade
     $ChocoAlreadyInstalled = Get-Command -Name "choco.exe" -ErrorAction SilentlyContinue
     if ($ChocoAlreadyInstalled -eq $null)
     {
+        # We need to install chocolatey
+        # Enable TLS1.1/TLS1.2 if they're available but disabled (eg. .NET 4.5)
+        $security_protcols = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::SystemDefault
+        if ([Net.SecurityProtocolType].GetMember("Tls11").Count -gt 0) {
+            $security_protcols = $security_protcols -bor [Net.SecurityProtocolType]::Tls11
+        }
+        if ([Net.SecurityProtocolType].GetMember("Tls12").Count -gt 0) {
+            $security_protcols = $security_protcols -bor [Net.SecurityProtocolType]::Tls12
+        }
+        [Net.ServicePointManager]::SecurityProtocol = $security_protcols
 
-        #We need to install chocolatey
         $wc = New-Object System.Net.WebClient;
         if ($proxy_url)
         {
@@ -183,7 +193,8 @@ Function Choco-Upgrade
         [bool] $allowprerelease,
         [string] $proxy_url,
         [string] $proxy_username,
-        [string] $proxy_password
+        [string] $proxy_password,
+        [string] $architecture
     )
 
     if (-not (Choco-IsInstalled $package))
@@ -192,6 +203,10 @@ Function Choco-Upgrade
     }
 
     $options = @( "-y", $package, "--timeout", "$timeout", "--failonunfound" )
+
+    switch ($architecture) {
+      "x86" { $options += "--x86" ; break}
+    }
 
     if ($check_mode)
     {
@@ -297,6 +312,7 @@ Function Choco-Upgrade
     $result.failed = $false
 }
 
+
 Function Choco-Install
 {
     [CmdletBinding()]
@@ -318,7 +334,8 @@ Function Choco-Install
         [bool] $allowprerelease,
         [string] $proxy_url,
         [string] $proxy_username,
-        [string] $proxy_password
+        [string] $proxy_password,
+        [string] $architecture
     )
 
     if (Choco-IsInstalled $package)
@@ -331,7 +348,7 @@ Function Choco-Install
                 -ignorechecksums $ignorechecksums -ignoredependencies $ignoredependencies `
                 -allowdowngrade $allowdowngrade -proxy_url $proxy_url `
                 -proxy_username $proxy_username -proxy_password $proxy_password `
-                -allowprerelease $allowprerelease
+                -allowprerelease $allowprerelease -architecture $architecture
             return
         }
         elseif (-not $force)
@@ -341,6 +358,10 @@ Function Choco-Install
     }
 
     $options = @( "-y", $package, "--timeout", "$timeout", "--failonunfound" )
+
+    switch ($architecture) {
+      "x86" { $options += "--x86" ; break}
+    }
 
     if ($check_mode)
     {
@@ -520,7 +541,7 @@ if ($state -in ("downgrade", "latest", "present", "reinstalled")) {
         -ignorechecksums $ignorechecksums -ignoredependencies $ignoredependencies `
         -allowdowngrade ($state -eq "downgrade") -proxy_url $proxy_url `
         -proxy_username $proxy_username -proxy_password $proxy_password `
-        -allowprerelease $allowprerelease
+        -allowprerelease $allowprerelease -architecture $architecture
 }
 
 Exit-Json -obj $result

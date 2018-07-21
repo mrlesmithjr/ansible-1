@@ -208,10 +208,12 @@ options:
     description:
     - Name of the existing snapshot to use to create a clone of a virtual machine.
     - This parameter is case sensitive.
+    - While creating linked clone using C(linked_clone) parameter, this parameter is required.
     version_added: '2.4'
   linked_clone:
     description:
     - Whether to create a linked clone from the snapshot specified.
+    - If specified, then C(snapshot_src) is required parameter.
     default: 'no'
     type: bool
     version_added: '2.4'
@@ -395,7 +397,7 @@ EXAMPLES = r'''
   delegate_to: localhost
   register: deploy
 
-- name: Clone a virtual machine from Template and customize
+- name: Clone a virtual machine from Windows template and customize
   vmware_guest:
     hostname: "{{ vcenter_ip }}"
     username: "{{ vcenter_username }}"
@@ -427,6 +429,32 @@ EXAMPLES = r'''
       runonce:
       - powershell.exe -ExecutionPolicy Unrestricted -File C:\Windows\Temp\ConfigureRemotingForAnsible.ps1 -ForceNewSSLCert -EnableCredSSP
   delegate_to: localhost
+
+- name:  Clone a virtual machine from Linux template and customize
+  vmware_guest:
+    hostname: "{{ vcenter_server }}"
+    username: "{{ vcenter_user }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    state: present
+    folder: /DC1/vm
+    template: "{{ template }}"
+    name: "{{ vm_name }}"
+    cluster: DC1_C1
+    networks:
+      - name: VM Network
+        ip: 192.168.10.11
+        netmask: 255.255.255.0
+    wait_for_ip_address: True
+    customization:
+      domain: "{{ guest_domain }}"
+      dns_servers:
+        - 8.9.9.9
+        - 7.8.8.9
+      dns_suffix:
+        - example.com
+        - example2.com
 
 - name: Rename a virtual machine (requires the virtual machine's uuid)
   vmware_guest:
@@ -1420,7 +1448,11 @@ class PyVmomiHelper(PyVmomi):
 
         # TODO: Maybe list the different domains from the interfaces here by default ?
         if 'dns_suffix' in self.params['customization']:
-            globalip.dnsSuffixList = self.params['customization']['dns_suffix']
+            dns_suffix = self.params['customization']['dns_suffix']
+            if isinstance(dns_suffix, list):
+                globalip.dnsSuffixList = " ".join(dns_suffix)
+            else:
+                globalip.dnsSuffixList = dns_suffix
         elif 'domain' in self.params['customization']:
             globalip.dnsSuffixList = self.params['customization']['domain']
 
@@ -1982,17 +2014,25 @@ class PyVmomiHelper(PyVmomi):
                 # > pool: For a clone operation from a template to a virtual machine, this argument is required.
                 relospec.pool = resource_pool
 
-                if self.params['snapshot_src'] is not None and self.params['linked_clone']:
-                    relospec.diskMoveType = vim.vm.RelocateSpec.DiskMoveOptions.createNewChildDiskBacking
+                linked_clone = self.params.get('linked_clone')
+                snapshot_src = self.params.get('snapshot_src', None)
+                if linked_clone:
+                    if snapshot_src is not None:
+                        relospec.diskMoveType = vim.vm.RelocateSpec.DiskMoveOptions.createNewChildDiskBacking
+                    else:
+                        self.module.fail_json(msg="Parameter 'linked_src' and 'snapshot_src' are"
+                                                  " required together for linked clone operation.")
 
                 clonespec = vim.vm.CloneSpec(template=self.params['is_template'], location=relospec)
                 if self.customspec:
                     clonespec.customization = self.customspec
 
-                if self.params['snapshot_src'] is not None:
-                    snapshot = self.get_snapshots_by_name_recursively(snapshots=vm_obj.snapshot.rootSnapshotList, snapname=self.params['snapshot_src'])
+                if snapshot_src is not None:
+                    snapshot = self.get_snapshots_by_name_recursively(snapshots=vm_obj.snapshot.rootSnapshotList,
+                                                                      snapname=snapshot_src)
                     if len(snapshot) != 1:
-                        self.module.fail_json(msg='virtual machine "%(template)s" does not contain snapshot named "%(snapshot_src)s"' % self.params)
+                        self.module.fail_json(msg='virtual machine "%(template)s" does not contain'
+                                                  ' snapshot named "%(snapshot_src)s"' % self.params)
 
                     clonespec.snapshot = snapshot[0].snapshot
 
