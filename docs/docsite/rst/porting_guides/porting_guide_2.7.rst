@@ -100,7 +100,26 @@ The following modules will be removed in Ansible 2.10. Please update your playbo
 Noteworthy module changes
 -------------------------
 
-No notable changes.
+* Check mode is now supported in the ``command`` and ``shell`` modules. However, only when ``creates`` or ``removes`` is
+  specified. If either of these are specified, the module will check for existence of the file and report the correct
+  changed status, if they are not included the module will skip like it had done previously.
+
+* The ``win_chocolatey`` module originally required the ``proxy_username`` and ``proxy_password`` to
+  escape any double quotes in the value. This is no longer required and the escaping may cause further
+  issues.
+
+* The ``win_uri`` module has removed the deprecated option ``use_basic_parsing``, since Ansible 2.5 this option did
+  nothing
+
+* The ``win_scheduled_task`` module has removed the following deprecated options:
+
+  * ``executable``, use ``path`` in an actions entry instead
+  * ``argument``, use ``arguments`` in an actions entry instead
+  * ``store_password``, set ``logon_type: password`` instead
+  * ``days_of_week``, use ``monthlydow`` in a triggers entry instead
+  * ``frequency``, use ``type``, in a triggers entry instead
+  * ``time``, use ``start_boundary`` in a triggers entry instead
+
 
 Plugins
 =======
