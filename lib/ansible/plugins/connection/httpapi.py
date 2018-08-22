@@ -142,9 +142,9 @@ options:
 
 from ansible.errors import AnsibleConnectionFailure
 from ansible.module_utils._text import to_bytes
-from ansible.module_utils.six import PY3
+from ansible.module_utils.six import PY3, BytesIO
 from ansible.module_utils.six.moves import cPickle
-from ansible.module_utils.six.moves.urllib.error import HTTPError
+from ansible.module_utils.six.moves.urllib.error import HTTPError, URLError
 from ansible.module_utils.urls import open_url
 from ansible.playbook.play_context import PlayContext
 from ansible.plugins.loader import cliconf_loader, httpapi_loader
@@ -206,12 +206,12 @@ class Connection(NetworkConnectionBase):
 
             httpapi = httpapi_loader.get(self._network_os, self)
             if httpapi:
+                display.vvvv('loaded API plugin for network_os %s' % self._network_os, host=self._play_context.remote_addr)
+                self._implementation_plugins.append(httpapi)
                 httpapi.set_become(self._play_context)
                 httpapi.login(self.get_option('remote_user'), self.get_option('password'))
-                display.vvvv('loaded API plugin for network_os %s' % self._network_os, host=self._play_context.remote_addr)
             else:
                 raise AnsibleConnectionFailure('unable to load API plugin for network_os %s' % self._network_os)
-            self._implementation_plugins.append(httpapi)
 
             cliconf = cliconf_loader.get(self._network_os, self)
             if cliconf:
@@ -243,7 +243,10 @@ class Connection(NetworkConnectionBase):
         )
         url_kwargs.update(kwargs)
         if self._auth:
-            url_kwargs['headers'].update(self._auth)
+            # Avoid modifying passed-in headers
+            headers = dict(kwargs.get('headers', {}))
+            headers.update(self._auth)
+            url_kwargs['headers'] = headers
         else:
             url_kwargs['url_username'] = self.get_option('remote_user')
             url_kwargs['url_password'] = self.get_option('password')
@@ -251,14 +254,20 @@ class Connection(NetworkConnectionBase):
         try:
             response = open_url(self._url + path, data=data, **url_kwargs)
         except HTTPError as exc:
-            if exc.code == 401 and self._auth:
-                # Stored auth appears to be invalid, clear and retry
-                self._auth = None
-                self.login(self.get_option('remote_user'), self.get_option('password'))
+            is_handled = self.handle_httperror(exc)
+            if is_handled is True:
                 return self.send(path, data, **kwargs)
-            raise AnsibleConnectionFailure('Could not connect to {0}: {1}'.format(self._url, exc.reason))
+            elif is_handled is False:
+                raise AnsibleConnectionFailure('Could not connect to {0}: {1}'.format(self._url + path, exc.reason))
+            else:
+                raise
+        except URLError as exc:
+            raise AnsibleConnectionFailure('Could not connect to {0}: {1}'.format(self._url + path, exc.reason))
+
+        response_buffer = BytesIO()
+        response_buffer.write(response.read())
 
         # Try to assign a new auth token if one is given
-        self._auth = self.update_auth(response) or self._auth
+        self._auth = self.update_auth(response, response_buffer) or self._auth
 
-        return response
+        return response, response_buffer

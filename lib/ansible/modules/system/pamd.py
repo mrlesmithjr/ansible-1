@@ -262,7 +262,7 @@ dest:
     sample: "/etc/pam.d/system-auth"
 backupdest:
     description:
-    - "The file name of the the backup file, if created."
+    - "The file name of the backup file, if created."
     returned: success
     type: string
     version_added: 2.6
@@ -795,6 +795,7 @@ def main():
                      'backupdest': backupdest}
 
     module.exit_json(changed=changes > 0, ansible_facts=facts)
+
 
 if __name__ == '__main__':
     main()

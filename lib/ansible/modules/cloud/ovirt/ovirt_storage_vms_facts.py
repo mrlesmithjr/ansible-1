@@ -57,7 +57,7 @@ EXAMPLES = '''
 
 RETURN = '''
 ovirt_storage_vms:
-    description: "List of dictionaries describing the VMs. VM attribues are mapped to dictionary keys,
+    description: "List of dictionaries describing the VMs. VM attributes are mapped to dictionary keys,
                   all VMs attributes can be found at following url: http://ovirt.github.io/ovirt-engine-api-model/master/#types/vm."
     returned: On success.
     type: list
@@ -94,7 +94,7 @@ def main():
         storage_domain_service = storage_domains_service.storage_domain_service(sd_id)
         vms_service = storage_domain_service.vms_service()
 
-        # Find the the unregistered VM we want to register:
+        # Find the unregistered VM we want to register:
         if module.params.get('unregistered'):
             vms = vms_service.list(unregistered=True)
         else:

@@ -37,6 +37,10 @@ options:
   capabilities:
     description:
       - List of capabilities to add to the container.
+  cap_drop:
+    description:
+      - List of capabilities to drop from the container.
+    version_added: "2.7"
   cleanup:
     description:
       - Use with I(detach=false) to remove the container after successful execution.
@@ -164,8 +168,10 @@ options:
       - Override default signal used to kill a running container.
   kernel_memory:
     description:
-      - "Kernel memory limit (format: <number>[<unit>]). Number is a positive integer.
-        Unit can be one of b, k, m, or g. Minimum is 4M."
+      - "Kernel memory limit (format: C(<number>[<unit>])). Number is a positive integer.
+        Unit can be C(B) (byte), C(K) (kibibyte, 1024B), C(M) (mebibyte), C(G) (gibibyte),
+        C(T) (tebibyte), or C(P) (pebibyte). Minimum is C(4M)."
+      - Omitting the unit defaults to bytes.
     default: 0
   labels:
      description:
@@ -197,18 +203,24 @@ options:
       - Container MAC address (e.g. 92:d0:c6:0a:29:33)
   memory:
     description:
-      - "Memory limit (format: <number>[<unit>]). Number is a positive integer.
-        Unit can be one of b, k, m, or g"
+      - "Memory limit (format: C(<number>[<unit>])). Number is a positive integer.
+        Unit can be C(B) (byte), C(K) (kibibyte, 1024B), C(M) (mebibyte), C(G) (gibibyte),
+        C(T) (tebibyte), or C(P) (pebibyte)."
+      - Omitting the unit defaults to bytes.
     default: '0'
   memory_reservation:
     description:
-      - "Memory soft limit (format: <number>[<unit>]). Number is a positive integer.
-        Unit can be one of b, k, m, or g"
+      - "Memory soft limit (format: C(<number>[<unit>])). Number is a positive integer.
+        Unit can be C(B) (byte), C(K) (kibibyte, 1024B), C(M) (mebibyte), C(G) (gibibyte),
+        C(T) (tebibyte), or C(P) (pebibyte)."
+      - Omitting the unit defaults to bytes.
     default: 0
   memory_swap:
     description:
-      - Total memory limit (memory + swap, format:<number>[<unit>]).
-        Number is a positive integer. Unit can be one of b, k, m, or g.
+      - "Total memory limit (memory + swap, format: C(<number>[<unit>])).
+        Number is a positive integer. Unit can be C(B) (byte), C(K) (kibibyte, 1024B),
+        C(M) (mebibyte), C(G) (gibibyte), C(T) (tebibyte), or C(P) (pebibyte)."
+      - Omitting the unit defaults to bytes.
     default: 0
   memory_swappiness:
     description:
@@ -321,9 +333,10 @@ options:
     default: 0
   shm_size:
     description:
-      - Size of `/dev/shm`. The format is `<number><unit>`. `number` must be greater than `0`.
-        Unit is optional and can be `b` (bytes), `k` (kilobytes), `m` (megabytes), or `g` (gigabytes).
-      - Omitting the unit defaults to bytes. If you omit the size entirely, the system uses `64m`.
+      - "Size of C(/dev/shm) (format: C(<number>[<unit>])). Number is positive integer.
+        Unit can be C(B) (byte), C(K) (kibibyte, 1024B), C(M) (mebibyte), C(G) (gibibyte),
+        C(T) (tebibyte), or C(P) (pebibyte)."
+      - Omitting the unit defaults to bytes. If you omit the size entirely, the system uses C(64M).
   security_opts:
     description:
       - List of security options in the form of C("label:user:User")
@@ -561,6 +574,15 @@ EXAMPLES = '''
     name: sleepy
     purge_networks: yes
 
+- name: Create a container with limited capabilities
+  docker_container:
+    name: sleepy
+    image: ubuntu:16.04
+    command: sleep infinity
+    capabilities:
+      - sys_time
+    cap_drop:
+      - all
 '''
 
 RETURN = '''
@@ -629,6 +651,7 @@ except:
 
 
 REQUIRES_CONVERSION_TO_BYTES = [
+    'kernel_memory',
     'memory',
     'memory_reservation',
     'memory_swap',
@@ -650,6 +673,7 @@ class TaskParameters(DockerBaseClass):
         self.auto_remove = None
         self.blkio_weight = None
         self.capabilities = None
+        self.cap_drop = None
         self.cleanup = None
         self.command = None
         self.cpu_period = None
@@ -905,6 +929,7 @@ class TaskParameters(DockerBaseClass):
             network_mode='network_mode',
             userns_mode='userns_mode',
             cap_add='capabilities',
+            cap_drop='cap_drop',
             extra_hosts='etc_hosts',
             read_only='read_only',
             ipc_mode='ipc_mode',
@@ -1294,7 +1319,7 @@ class Container(DockerBaseClass):
             expected_binds=host_config.get('Binds'),
             volumes_from=host_config.get('VolumesFrom'),
             volume_driver=host_config.get('VolumeDriver'),
-            working_dir=host_config.get('WorkingDir')
+            working_dir=config.get('WorkingDir')
         )
 
         differences = []
@@ -2039,6 +2064,7 @@ def main():
         auto_remove=dict(type='bool', default=False),
         blkio_weight=dict(type='int'),
         capabilities=dict(type='list'),
+        cap_drop=dict(type='list'),
         cleanup=dict(type='bool', default=False),
         command=dict(type='raw'),
         cpu_period=dict(type='int'),
