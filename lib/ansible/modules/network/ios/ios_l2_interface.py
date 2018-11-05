@@ -19,7 +19,7 @@ extends_documentation_fragment: ios
 version_added: "2.5"
 short_description: Manage Layer-2 interface on Cisco IOS devices.
 description:
-  - This module provides declarative management of Layer-2 interface on
+  - This module provides declarative management of Layer-2 interfaces on
     Cisco IOS devices.
 author:
   - Nathaniel Case (@qalthos)
@@ -118,7 +118,7 @@ from ansible.module_utils.network.ios.ios import ios_argument_spec
 
 def get_interface_type(interface):
     intf_type = 'unknown'
-    if interface.upper()[:2] in ('ET', 'GI', 'FA', 'TE', 'FO'):
+    if interface.upper()[:2] in ('ET', 'GI', 'FA', 'TE', 'FO', 'HU', 'TWE'):
         intf_type = 'ethernet'
     elif interface.upper().startswith('VL'):
         intf_type = 'svi'

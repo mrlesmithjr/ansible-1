@@ -117,6 +117,7 @@ class AnsibleAWSModule(object):
                 msg='Python modules "botocore" or "boto3" are missing, please install both')
 
         self.check_mode = self._module.check_mode
+        self._diff = self._module._diff
         self._name = self._module._name
 
     @property
@@ -282,3 +283,15 @@ def is_boto3_error_code(code, e=None):
     if isinstance(e, ClientError) and e.response['Error']['Code'] == code:
         return ClientError
     return type('NeverEverRaisedException', (Exception,), {})
+
+
+def get_boto3_client_method_parameters(client, method_name, required=False):
+    op = client.meta.method_to_api_mapping.get(method_name)
+    input_shape = client._service_model.operation_model(op).input_shape
+    if not input_shape:
+        parameters = []
+    elif required:
+        parameters = list(input_shape.required_members)
+    else:
+        parameters = list(input_shape.members.keys())
+    return parameters

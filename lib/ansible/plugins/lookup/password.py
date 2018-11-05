@@ -69,7 +69,10 @@ EXAMPLES = """
     priv: "{{ client }}_{{ tier }}_{{ role }}.*:ALL"
 
 - name: create a mysql user with a random password using only ascii letters
-  mysql_user: name={{ client }} password="{{ lookup('password', '/tmp/passwordfile chars=ascii_letters') }}" priv='{{ client }}_{{ tier }}_{{ role }}.*:ALL'
+  mysql_user:
+    name: "{{ client }}"
+    password: "{{ lookup('password', '/tmp/passwordfile chars=ascii_letters') }}"
+    priv: '{{ client }}_{{ tier }}_{{ role }}.*:ALL'
 
 - name: create a mysql user with a random password using only digits
   mysql_user:
@@ -100,7 +103,7 @@ from ansible.errors import AnsibleError, AnsibleAssertionError
 from ansible.module_utils._text import to_bytes, to_native, to_text
 from ansible.parsing.splitter import parse_kv
 from ansible.plugins.lookup import LookupBase
-from ansible.utils.encrypt import do_encrypt, random_password
+from ansible.utils.encrypt import do_encrypt, random_password, random_salt
 from ansible.utils.path import makedirs_safe
 
 
@@ -207,15 +210,6 @@ def _gen_candidate_chars(characters):
     return chars
 
 
-def _random_salt():
-    """Return a text string suitable for use as a salt for the hash functions we use to encrypt passwords.
-    """
-    # Note passlib salt values must be pure ascii so we can't let the user
-    # configure this
-    salt_chars = _gen_candidate_chars(['ascii_letters', 'digits', './'])
-    return random_password(length=8, chars=salt_chars)
-
-
 def _parse_content(content):
     '''parse our password data format into password and salt
 
@@ -274,7 +268,7 @@ def _get_lock(b_path):
     """Get the lock for writing password file."""
     first_process = False
     b_pathdir = os.path.dirname(b_path)
-    lockfile_name = to_bytes("%s.ansible_lockfile" % hashlib.md5(b_path).hexdigest())
+    lockfile_name = to_bytes("%s.ansible_lockfile" % hashlib.sha1(b_path).hexdigest())
     lockfile = os.path.join(b_pathdir, lockfile_name)
     if not os.path.exists(lockfile) and b_path != to_bytes('/dev/null'):
         try:
@@ -329,7 +323,7 @@ class LookupModule(LookupBase):
 
             if params['encrypt'] and not salt:
                 changed = True
-                salt = _random_salt()
+                salt = random_salt()
 
             if changed and b_path != to_bytes('/dev/null'):
                 content = _format_content(plaintext_password, salt, encrypt=params['encrypt'])

@@ -137,6 +137,18 @@ As described above, it is easy to assign variables to hosts that will be used la
    host1 http_port=80 maxRequestsPerChild=808
    host2 http_port=303 maxRequestsPerChild=909
 
+The YAML version:
+
+.. code-block:: yaml
+    
+    atlanta:
+      host1:
+        http_port: 80
+        maxRequestsPerChild: 808
+      host2:
+        http_port: 303
+        maxRequestsPerChild: 909
+
 .. _group_variables:
 
 Group Variables
@@ -304,7 +316,7 @@ is an excellent way to track changes to your inventory and host variables.
 How Variables Are Merged
 ++++++++++++++++++++++++
 
-By default variables are merged/flattened to the specific host before a play is run. This keeps Ansible focused on the Host and Task, so groups don't really survive outside of inventory and host matching. By default, Ansible overwrites variables including the ones defined for a group and/or host (see the `hash_merge` setting to change this) . The order/precedence is (from lowest to highest):
+By default variables are merged/flattened to the specific host before a play is run. This keeps Ansible focused on the Host and Task, so groups don't really survive outside of inventory and host matching. By default, Ansible overwrites variables including the ones defined for a group and/or host (see :ref:`DEFAULT_HASH_BEHAVIOUR<DEFAULT_HASH_BEHAVIOUR>`). The order/precedence is (from lowest to highest):
 
 - all group (because it is the 'parent' of all other groups)
 - parent group

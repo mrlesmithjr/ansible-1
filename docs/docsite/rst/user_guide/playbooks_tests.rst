@@ -37,13 +37,13 @@ Such as::
 Testing strings
 ```````````````
 
-To match strings against a substring or a regex, use the "match" or "search" filter::
+To match strings against a substring or a regular expression, use the "match", "search" or "regex" filters::
 
     vars:
       url: "http://example.com/users/foo/resources/bar"
 
     tasks:
-        - debug: 
+        - debug:
             msg: "matched pattern 1"
           when: url is match("http://example.com/users/.*/resources/.*")
 
@@ -54,6 +54,10 @@ To match strings against a substring or a regex, use the "match" or "search" fil
         - debug:
             msg: "matched pattern 3"
           when: url is search("/users/")
+
+        - debug:
+            msg: "matched pattern 4"
+          when: url is regex("example.com/\w+/foo")
 
 'match' requires a complete match in the string, while 'search' only requires matching a subset of the string.
 
@@ -67,14 +71,14 @@ Version Comparison
 
 .. note:: In 2.5 ``version_compare`` was renamed to ``version``
 
-To compare a version number, such as checking if the ``ansible_distribution_version``
+To compare a version number, such as checking if the ``ansible_facts['distribution_version']``
 version is greater than or equal to '12.04', you can use the ``version`` test.
 
-The ``version`` test can also be used to evaluate the ``ansible_distribution_version``::
+The ``version`` test can also be used to evaluate the ``ansible_facts['distribution_version']``::
 
-    {{ ansible_distribution_version is version('12.04', '>=') }}
+    {{ ansible_facts['distribution_version'] is version('12.04', '>=') }}
 
-If ``ansible_distribution_version`` is greater than or equal to 12.04, this test returns True, otherwise False.
+If ``ansible_facts['distribution_version']`` is greater than or equal to 12.04, this test returns True, otherwise False.
 
 The ``version`` test accepts the following operators::
 

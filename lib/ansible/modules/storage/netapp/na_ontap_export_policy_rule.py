@@ -9,14 +9,14 @@ __metaclass__ = type
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['preview'],
-                    'supported_by': 'community'}
+                    'supported_by': 'certified'}
 
 
 DOCUMENTATION = '''
 
 module: na_ontap_export_policy_rule
 
-short_description: Manage ONTAP Export rules
+short_description: NetApp ONTAP manage export policy rules
 extends_documentation_fragment:
     - netapp.na_ontap
 version_added: '2.6'
@@ -203,9 +203,9 @@ class NetAppontapExportRule(object):
         rule_info.add_new_child('policy-name', self.policy_name)
         if self.vserver:
             rule_info.add_new_child('vserver-name', self.vserver)
-        else:
-            if self.client_match:
-                rule_info.add_new_child('client-match', self.client_match)
+
+        if self.client_match:
+            rule_info.add_new_child('client-match', self.client_match)
 
         query = netapp_utils.zapi.NaElement('query')
         query.add_child_elem(rule_info)
@@ -254,6 +254,7 @@ class NetAppontapExportRule(object):
             return_value = {
                 'policy-name': self.policy_name
             }
+
         return return_value
 
     def get_export_policy(self):
@@ -420,6 +421,22 @@ class NetAppontapExportRule(object):
                                             enable_tunneling=True)
         except netapp_utils.zapi.NaApiError as error:
             self.module.fail_json(msg='Error modifying super_user_security %s: %s' % (self.super_user_security, to_native(error)),
+                                  exception=traceback.format_exc())
+
+    def modify_client_match(self, rule_index):
+        """
+        Modify client_match.
+        """
+        export_rule_modify_client_match = netapp_utils.zapi.NaElement.create_node_with_children(
+            'export-rule-modify',
+            **{'policy-name': self.policy_name,
+               'rule-index': rule_index,
+               'client-match': str(self.client_match)})
+        try:
+            self.server.invoke_successfully(export_rule_modify_client_match,
+                                            enable_tunneling=True)
+        except netapp_utils.zapi.NaApiError as error:
+            self.module.fail_json(msg='Error modifying client_match %s: %s' % (self.client_match, to_native(error)),
                                   exception=traceback.format_exc())
 
     def modify_allow_suid(self, rule_index):

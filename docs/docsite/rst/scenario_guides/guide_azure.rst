@@ -12,7 +12,7 @@ installed on the host running Ansible.
 
 .. code-block:: bash
 
-    $ pip install ansible[azure]
+    $ pip install 'ansible[azure]'
 
 If you are running Ansible from source, you can install the dependencies from the
 root directory of the Ansible repo.
@@ -244,7 +244,7 @@ virtual network already with an existing subnet, you can run the following to cr
       name: testvm10
       vm_size: Standard_D1
       admin_username: chouseknecht
-      ssh_password: false
+      ssh_password_enabled: false
       ssh_public_keys: "{{ ssh_keys }}"
       image:
         offer: CentOS
@@ -258,7 +258,7 @@ Dynamic Inventory Script
 
 If you are not familiar with Ansible's dynamic inventory scripts, check out :ref:`Intro to Dynamic Inventory <intro_dynamic_inventory>`.
 
-The Azure Resource Manager inventory script is called azure_rm.py. It authenticates with the Azure API exactly the same as the
+The Azure Resource Manager inventory script is called  `azure_rm.py  <https://raw.githubusercontent.com/ansible/ansible/devel/contrib/inventory/azure_rm.py>`_. It authenticates with the Azure API exactly the same as the
 Azure modules, which means you will either define the same environment variables described above in `Using Environment Variables`_,
 create a $HOME/.azure/credentials file (also described above in `Storing in a File`_), or pass command line parameters. To see available command
 line options execute the following:

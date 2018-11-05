@@ -10,7 +10,7 @@ __metaclass__ = type
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['preview'],
-                    'supported_by': 'community'}
+                    'supported_by': 'certified'}
 
 DOCUMENTATION = r'''
 ---
@@ -72,32 +72,6 @@ EXAMPLES = r'''
       password: secret
       server: lb.mydomain.com
       user: admin
-  delegate_to: localhost
-
-- name: Set vectors of DoS profile
-  bigip_firewall_dos_profile_vector:
-    name: "{{ item }}"
-    rate_increase: 100
-    rate_limit: infinite
-    rate_threshold: 120000
-    provider:
-      password: secret
-      server: lb.mydomain.com
-      user: admin
-  loop:
-    - a
-    - aaaa
-    - any
-    - axfr
-    - cname
-    - ixfr
-    - mx
-    - ns
-    - other
-    - ptr
-    - soa
-    - srv
-    - txt
   delegate_to: localhost
 '''
 
@@ -390,7 +364,7 @@ class ModuleManager(object):
             return True
         raise F5ModuleError(resp.content)
 
-    def read_current_from_device(self):
+    def read_current_from_device(self):  # lgtm [py/similar-function]
         uri = "https://{0}:{1}/mgmt/tm/security/dos/profile/{2}".format(
             self.client.provider['server'],
             self.client.provider['server_port'],
@@ -446,8 +420,10 @@ def main():
         client = F5RestClient(**module.params)
         mm = ModuleManager(module=module, client=client)
         results = mm.exec_module()
+        cleanup_tokens(client)
         exit_json(module, results, client)
     except F5ModuleError as ex:
+        cleanup_tokens(client)
         fail_json(module, ex, client)
 
 

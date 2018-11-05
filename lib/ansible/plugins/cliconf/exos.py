@@ -54,7 +54,7 @@ class Cliconf(CliconfBase):
 
     def get_config(self, source='running', flags=None):
         if source not in ('running', 'startup'):
-            return self.invalid_params("fetching configuration from %s is not supported" % source)
+            raise ValueError("fetching configuration from %s is not supported" % source)
         if source == 'running':
             cmd = 'show configuration'
         else:
@@ -87,8 +87,8 @@ class Cliconf(CliconfBase):
             self.send_command(to_bytes(command), to_bytes(prompt), to_bytes(answer),
                               False, newline)
 
-    def get(self, command, prompt=None, answer=None, sendonly=False):
-        return self.send_command(command, prompt=prompt, answer=answer, sendonly=sendonly)
+    def get(self, command, prompt=None, answer=None, sendonly=False, check_all=False):
+        return self.send_command(command=command, prompt=prompt, answer=answer, sendonly=sendonly, check_all=check_all)
 
     def get_device_operations(self):
         return {

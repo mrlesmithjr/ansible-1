@@ -162,6 +162,9 @@ class FieldAttributeBase(with_metaclass(BaseMeta, object)):
         # need a unique object here (all members contained within are
         # unique already).
         self._attributes = self._attributes.copy()
+        for key, value in self._attributes.items():
+            if callable(value):
+                self._attributes[key] = value()
 
         # and init vars, avoid using defaults in field declaration as it lives across plays
         self.vars = dict()
@@ -574,6 +577,7 @@ class Base(FieldAttributeBase):
     _no_log = FieldAttribute(isa='bool')
     _run_once = FieldAttribute(isa='bool')
     _ignore_errors = FieldAttribute(isa='bool')
+    _ignore_unreachable = FieldAttribute(isa='bool')
     _check_mode = FieldAttribute(isa='bool')
     _diff = FieldAttribute(isa='bool')
     _any_errors_fatal = FieldAttribute(isa='bool')

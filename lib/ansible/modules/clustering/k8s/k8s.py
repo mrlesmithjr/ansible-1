@@ -28,7 +28,7 @@ author:
 description:
   - Use the OpenShift Python client to perform CRUD operations on K8s objects.
   - Pass the object definition from a source file or inline. See examples for reading
-    files and using Jinja templates.
+    files and using Jinja templates or vault-encrypted files.
   - Access to the full range of K8s APIs.
   - Use the M(k8s_facts) module to obtain a list of items about an object of type C(kind)
   - Authenticate using either a config file, certificates, password or token.
@@ -43,16 +43,21 @@ extends_documentation_fragment:
 options:
   merge_type:
     description:
-    - Whether to override the default patch merge approach with a specific type. By the default, the strategic
+    - Whether to override the default patch merge approach with a specific type. By default, the strategic
       merge will typically be used.
     - For example, Custom Resource Definitions typically aren't updatable by the usual strategic merge. You may
       want to use C(merge) if you see "strategic merge patch format is not supported"
     - See U(https://kubernetes.io/docs/tasks/run-application/update-api-object-kubectl-patch/#use-a-json-merge-patch-to-update-a-deployment)
     - Requires openshift >= 0.6.2
+    - If more than one merge_type is given, the merge_types will be tried in order
+    - If openshift >= 0.6.2, this defaults to C(['strategic-merge', 'merge']), which is ideal for using the same parameters
+      on resource kinds that combine Custom Resources and built-in resources. For openshift < 0.6.2, the default
+      is simply C(strategic-merge).
     choices:
     - json
     - merge
     - strategic-merge
+    type: list
     version_added: "2.7"
 
 requirements:
@@ -111,7 +116,9 @@ EXAMPLES = '''
     state: present
     src: /testing/deployment.yml
 
-- name: Read definition file from the Ansible controller file system
+- name: >-
+    Read definition file from the Ansible controller file system.
+    If the definition file has been encrypted with Ansible Vault it will automatically be decrypted.
   k8s:
     state: present
     definition: "{{ lookup('file', '/testing/deployment.yml') }}"

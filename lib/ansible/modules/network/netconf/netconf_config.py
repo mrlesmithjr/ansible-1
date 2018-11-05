@@ -49,7 +49,7 @@ options:
     aliases: ['source']
   format:
     description:
-    - The format of the configuration provided as value of C(content). Accepted values are I(xml) and I(test) and
+    - The format of the configuration provided as value of C(content). Accepted values are I(xml) and I(text) and
       the given configuration format should be supported by remote Netconf server.
     default: xml
     choices: ['xml', 'text']
@@ -71,14 +71,13 @@ options:
       option completely replaces the configuration in the C(target) datastore. If the value is none the C(target)
       datastore is unaffected by the configuration in the config option, unless and until the incoming configuration
       data uses the C(operation) operation to request a different operation.
-    default: merge
     choices: ['merge', 'replace', 'none']
     version_added: "2.7"
   confirm:
     description:
     - This argument will configure a timeout value for the commit to be confirmed before it is automatically
       rolled back. If the C(confirm_commit) argument is set to False, this argument is silently ignored. If the
-      value of this argument is set to 0, the commit is confirmed immediately. The remote host should
+      value of this argument is set to 0, the commit is confirmed immediately. The remote host MUST
       support :candidate and :confirmed-commit capability for this option to .
     default: 0
     version_added: "2.7"
@@ -92,7 +91,7 @@ options:
     description:
     - This option control the netconf server action after a error is occured while editing the configuration.
       If the value is I(stop-on-error) abort the config edit on first error, if value is I(continue-on-error)
-      it continues to process configuration data on erro, error is recorded and negative response is generated
+      it continues to process configuration data on error, error is recorded and negative response is generated
       if any errors occur. If value is C(rollback-on-error) it rollback to the original configuration in case
       any error occurs, this requires the remote Netconf server to support the :rollback-on-error capability.
     default: stop-on-error
@@ -100,7 +99,8 @@ options:
     version_added: "2.7"
   save:
     description:
-      - The C(save) argument instructs the module to save the running-config to the startup-config if changed.
+      - The C(save) argument instructs the module to save the configuration in C(target) datastore to the
+        startup-config if changed and if :startup capability is supported by Netconf server.
     default: false
     version_added: "2.4"
   backup:
@@ -123,7 +123,7 @@ options:
   commit:
     description:
       - This boolean flag controls if the configuration changes should be committed or not after editing the
-        candidate datastore. This oprion is supported only if remote Netconf server supports :candidate
+        candidate datastore. This option is supported only if remote Netconf server supports :candidate
         capability. If the value is set to I(False) commit won't be issued after edit-config operation
         and user needs to handle commit or discard-changes explicitly.
     type: bool
@@ -206,11 +206,13 @@ backup_path:
   type: string
   sample: /playbooks/ansible/backup/config.2016-07-16@22:28:34
 diff:
-  description: If --diff option in enabled while running, the before and after configration change are
+  description: If --diff option in enabled while running, the before and after configuration change are
                returned as part of before and after key.
   returned: when diff is enabled
-  type: string
-  sample: /playbooks/ansible/backup/config.2016-07-16@22:28:34
+  type: dict
+  sample:
+    "after": "<rpc-reply>\n<data>\n<configuration>\n<version>17.3R1.10</version>...<--snip-->"
+    "before": "<rpc-reply>\n<data>\n<configuration>\n <version>17.3R1.10</version>...<--snip-->"
 '''
 
 from ansible.module_utils._text import to_text
@@ -228,7 +230,7 @@ def main():
         source_datastore=dict(aliases=['source']),
         format=dict(choices=['xml', 'text'], default='xml'),
         lock=dict(choices=['never', 'always', 'if-supported'], default='always'),
-        default_operation=dict(choices=['merge', 'replace', 'none'], default='merge'),
+        default_operation=dict(choices=['merge', 'replace', 'none']),
         confirm=dict(type='int', default=0),
         confirm_commit=dict(type='bool', default=False),
         error_option=dict(choices=['stop-on-error', 'continue-on-error', 'rollback-on-error'], default='stop-on-error'),
@@ -263,16 +265,17 @@ def main():
 
     if module.params['src']:
         module.deprecate(msg="argument 'src' has been deprecated. Use file lookup plugin instead to read file contents.",
-                         version="4 releases from v2.7")
+                         version="2.11")
 
     config = module.params['content'] or module.params['src']
     target = module.params['target']
     lock = module.params['lock']
-    source = module.params['source']
+    source = module.params['source_datastore']
     delete = module.params['delete']
     confirm_commit = module.params['confirm_commit']
     confirm = module.params['confirm']
     validate = module.params['validate']
+    save = module.params['save']
 
     conn = Connection(module._socket_path)
     capabilities = get_capabilities(module)
@@ -296,14 +299,14 @@ def main():
             module.fail_json(msg='neither :candidate nor :writable-running are supported by this netconf server')
 
     # Netconf server capability validation against input options
-    if module.params['save'] and not supports_startup:
-        module.fail_json(msg='cannot copy <running/> to <startup/>, while :startup is not supported')
+    if save and not supports_startup:
+        module.fail_json(msg='cannot copy <%s/> to <startup/>, while :startup is not supported' % target)
 
-    if module.params['confirm_commit'] and not operations.get('supports_confirm_commit', False):
+    if confirm_commit and not operations.get('supports_confirm_commit', False):
         module.fail_json(msg='confirm commit is not supported by Netconf server')
 
-    if confirm_commit or (confirm > 0) and not operations.get('supports_confirm_commit', False):
-        module.fail_json(msg='confirm commit is not supported by this netconf server')
+    if (confirm > 0) and not operations.get('supports_confirm_commit', False):
+        module.fail_json(msg='confirm commit is not supported by this netconf server, given confirm timeout: %d' % confirm)
 
     if validate and not operations.get('supports_validate', False):
         module.fail_json(msg='validate is not supported by this netconf server')
@@ -320,6 +323,7 @@ def main():
 
     result = {'changed': False, 'server_capabilities': capabilities.get('server_capabilities', [])}
     before = None
+    after = None
     locked = False
     try:
         if module.params['backup']:
@@ -327,8 +331,7 @@ def main():
             before = to_text(response, errors='surrogate_then_replace').strip()
             result['__backup__'] = before.strip()
         if validate:
-            if not module.check_mode:
-                conn.validate(target)
+            conn.validate(target)
         if source:
             if not module.check_mode:
                 conn.copy(source, target)
@@ -347,34 +350,44 @@ def main():
                 result['changed'] = True
                 module.exit_json(**result)
 
-            if lock:
+            if execute_lock:
                 conn.lock(target=target)
                 locked = True
             if before is None:
                 before = to_text(conn.get_config(source=target), errors='surrogate_then_replace').strip()
 
             kwargs = {
+                'config': config,
                 'target': target,
                 'default_operation': module.params['default_operation'],
                 'error_option': module.params['error_option'],
                 'format': module.params['format'],
             }
-            conn.edit_config(config, **kwargs)
+
+            conn.edit_config(**kwargs)
+
             if supports_commit and module.params['commit']:
+                after = to_text(conn.get_config(source='candidate'), errors='surrogate_then_replace').strip()
                 if not module.check_mode:
-                    timeout = confirm if confirm > 0 else None
-                    conn.commit(confirmed=confirm_commit, timeout=timeout)
+                    confirm_timeout = confirm if confirm > 0 else None
+                    confirmed_commit = True if confirm_timeout else False
+                    conn.commit(confirmed=confirmed_commit, timeout=confirm_timeout)
                 else:
                     conn.discard_changes()
 
-            after = to_text(conn.get_config(source='running'), errors='surrogate_then_replace').strip()
+            if after is None:
+                after = to_text(conn.get_config(source='running'), errors='surrogate_then_replace').strip()
 
-            if sanitize_xml(before) != sanitize_xml(after):
+            sanitized_before = sanitize_xml(before)
+            sanitized_after = sanitize_xml(after)
+            if sanitized_before != sanitized_after:
                 result['changed'] = True
 
-            if module._diff:
-                if result['changed']:
-                    result['diff'] = {'before': before, 'after': after}
+            if result['changed']:
+                if save and not module.check_mode:
+                    conn.copy_config(target, 'startup')
+                if module._diff:
+                    result['diff'] = {'before': sanitized_before, 'after': sanitized_after}
 
     except ConnectionError as e:
         module.fail_json(msg=to_text(e, errors='surrogate_then_replace').strip())

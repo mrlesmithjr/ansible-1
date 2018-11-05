@@ -129,8 +129,8 @@ class GcpSession(object):
             credentials, project_id = google.auth.default()
             return credentials
         elif cred_type == 'serviceaccount':
-            return service_account.Credentials.from_service_account_file(
-                self.module.params['service_account_file'])
+            path = os.path.realpath(os.path.expanduser(self.module.params['service_account_file']))
+            return service_account.Credentials.from_service_account_file(path)
         elif cred_type == 'machineaccount':
             return google.auth.compute_engine.Credentials(
                 self.module.params['service_account_email'])
@@ -152,7 +152,10 @@ class GcpModule(AnsibleModule):
         kwargs['argument_spec'] = self._merge_dictionaries(
             arg_spec,
             dict(
-                project=dict(required=True, type='str'),
+                project=dict(
+                    required=True,
+                    type='str',
+                    fallback=(env_fallback, ['GCP_PROJECT'])),
                 auth_kind=dict(
                     required=False,
                     fallback=(env_fallback, ['GCP_AUTH_KIND']),

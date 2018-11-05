@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2017 F5 Networks Inc.
+# Copyright: (c) 2017, F5 Networks Inc.
 # GNU General Public License v3.0 (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
@@ -10,9 +10,10 @@ __metaclass__ = type
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['stableinterface'],
-                    'supported_by': 'community'}
+                    'supported_by': 'certified'}
 
 DOCUMENTATION = r'''
+---
 module: bigip_static_route
 short_description: Manipulate static routes on a BIG-IP
 description:
@@ -91,10 +92,11 @@ EXAMPLES = r'''
     netmask: 255.255.255.255
     gateway_address: 10.2.2.3
     name: test-route
-    password: secret
-    server: lb.mydomain.come
-    user: admin
-    validate_certs: no
+    provider:
+      password: secret
+      server: lb.mydomain.come
+      user: admin
+      validate_certs: no
   delegate_to: localhost
 '''
 
@@ -162,7 +164,11 @@ try:
     from library.module_utils.network.f5.common import transform_name
     from library.module_utils.network.f5.common import exit_json
     from library.module_utils.network.f5.common import fail_json
+    from library.module_utils.network.f5.ipaddress import is_valid_ip
+    from library.module_utils.network.f5.ipaddress import ipv6_netmask_to_cidr
+    from library.module_utils.compat.ipaddress import ip_address
     from library.module_utils.compat.ipaddress import ip_network
+    from library.module_utils.compat.ipaddress import ip_interface
 except ImportError:
     from ansible.module_utils.network.f5.bigip import F5RestClient
     from ansible.module_utils.network.f5.common import F5ModuleError
@@ -173,7 +179,11 @@ except ImportError:
     from ansible.module_utils.network.f5.common import transform_name
     from ansible.module_utils.network.f5.common import exit_json
     from ansible.module_utils.network.f5.common import fail_json
+    from ansible.module_utils.network.f5.ipaddress import is_valid_ip
+    from ansible.module_utils.network.f5.ipaddress import ipv6_netmask_to_cidr
+    from ansible.module_utils.compat.ipaddress import ip_address
     from ansible.module_utils.compat.ipaddress import ip_network
+    from ansible.module_utils.compat.ipaddress import ip_interface
 
 
 class Parameters(AnsibleF5Parameters):
@@ -243,8 +253,12 @@ class ModuleParameters(Parameters):
         if self._values['gateway_address'] is None:
             return None
         try:
-            ip = ip_network(u'%s' % str(self._values['gateway_address']))
-            return str(ip.network_address)
+            if '%' in self._values['gateway_address']:
+                addr = self._values['gateway_address'].split('%')[0]
+            else:
+                addr = self._values['gateway_address']
+            ip_interface(u'%s' % str(addr))
+            return str(self._values['gateway_address'])
         except ValueError:
             raise F5ModuleError(
                 "The provided gateway_address is not an IP address"
@@ -264,11 +278,11 @@ class ModuleParameters(Parameters):
         if self._values['destination'].startswith('default'):
             self._values['destination'] = '0.0.0.0/0'
         if self._values['destination'].startswith('default-inet6'):
-            self._values['destination'] = '::/::'
+            self._values['destination'] = '::/0'
         try:
             ip = ip_network(u'%s' % str(self.destination_ip))
             if self.route_domain:
-                return '{0}%{2}/{1}'.format(str(ip.network_address), ip.prefixlen, self.route_domain)
+                return '{0}%{1}/{2}'.format(str(ip.network_address), self.route_domain, ip.prefixlen)
             else:
                 return '{0}/{1}'.format(str(ip.network_address), ip.prefixlen)
         except ValueError:
@@ -286,22 +300,36 @@ class ModuleParameters(Parameters):
     def netmask(self):
         if self._values['netmask'] is None:
             return None
-        # Check if numeric
         try:
             result = int(self._values['netmask'])
-            if 0 <= result < 256:
+
+            # CIDRs between 0 and 128 are allowed
+            if 0 <= result <= 128:
                 return result
+            else:
+                raise F5ModuleError(
+                    "The provided netmask must be between 0 and 32 for IPv4, or "
+                    "0 and 128 for IPv6."
+                )
+        except ValueError:
+            # not a number, but that's ok. Further processing necessary
+            pass
+
+        if not is_valid_ip(self._values['netmask']):
             raise F5ModuleError(
                 'The provided netmask {0} is neither in IP or CIDR format'.format(result)
             )
-        except ValueError:
-            try:
-                ip = ip_network(u'%s' % str(self._values['netmask']))
-            except ValueError:
-                raise F5ModuleError(
-                    'The provided netmask {0} is neither in IP or CIDR format'.format(self._values['netmask'])
-                )
-            result = int(ip.prefixlen)
+
+        # Create a temporary address to check if the netmask IP is v4 or v6
+        addr = ip_address(u'{0}'.format(str(self._values['netmask'])))
+        if addr.version == 4:
+            # Create a more real v4 address using a wildcard, so that we can determine
+            # the CIDR value from it.
+            ip = ip_network(u'0.0.0.0/%s' % str(self._values['netmask']))
+            result = ip.prefixlen
+        else:
+            result = ipv6_netmask_to_cidr(self._values['netmask'])
+
         return result
 
 
@@ -343,9 +371,9 @@ class ApiParameters(Parameters):
         if destination.startswith('default%'):
             destination = '0.0.0.0%{0}/0'.format(destination.split('%')[1])
         elif destination.startswith('default-inet6%'):
-            destination = '::%{0}/::'.format(destination.split('%')[1])
+            destination = '::%{0}/0'.format(destination.split('%')[1])
         elif destination.startswith('default-inet6'):
-            destination = '::/::'
+            destination = '::/0'
         elif destination.startswith('default'):
             destination = '0.0.0.0/0'
         return destination
@@ -662,8 +690,10 @@ def main():
         client = F5RestClient(**module.params)
         mm = ModuleManager(module=module, client=client)
         results = mm.exec_module()
+        cleanup_tokens(client)
         exit_json(module, results, client)
     except F5ModuleError as ex:
+        cleanup_tokens(client)
         fail_json(module, ex, client)
 
 
