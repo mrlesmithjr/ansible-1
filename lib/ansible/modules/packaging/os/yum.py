@@ -210,6 +210,10 @@ notes:
     "@development-tools" and environment groups are "@^gnome-desktop-environment".
     Use the "yum group list" command to see which category of group the group
     you want to install falls into.'
+  - 'The yum module does not support clearing yum cache in an idempotent way, so it
+    was decided not to implement it, the only method is to use shell and call the yum
+    command directly, namely "shell: yum clean all"
+    https://github.com/ansible/ansible/pull/31450#issuecomment-352889579'
 # informational: requirements for nodes
 requirements:
 - yum
@@ -1180,7 +1184,9 @@ class YumModule(YumDnf):
                         self.module.fail_json(msg="Failed to get nevra information from RPM package: %s" % spec)
 
                     # local rpm files can't be updated
-                    if not self.is_installed(repoq, envra):
+                    if self.is_installed(repoq, envra):
+                        pkgs['update'].append(spec)
+                    else:
                         pkgs['install'].append(spec)
                     continue
 
@@ -1195,13 +1201,15 @@ class YumModule(YumDnf):
                         self.module.fail_json(msg="Failed to get nevra information from RPM package: %s" % spec)
 
                     # local rpm files can't be updated
-                    if not self.is_installed(repoq, envra):
-                        pkgs['install'].append(package)
+                    if self.is_installed(repoq, envra):
+                        pkgs['update'].append(spec)
+                    else:
+                        pkgs['install'].append(spec)
                     continue
 
                 # dep/pkgname  - find it
                 else:
-                    if self.is_installed(repoq, spec) or self.update_only:
+                    if self.is_installed(repoq, spec):
                         pkgs['update'].append(spec)
                     else:
                         pkgs['install'].append(spec)
@@ -1271,7 +1279,10 @@ class YumModule(YumDnf):
                 else:
                     to_update.append((w, '%s.%s from %s' % (updates[w]['version'], updates[w]['dist'], updates[w]['repo'])))
 
-            res['changes'] = dict(installed=pkgs['install'], updated=to_update)
+            if self.update_only:
+                res['changes'] = dict(installed=[], updated=to_update)
+            else:
+                res['changes'] = dict(installed=pkgs['install'], updated=to_update)
 
             if will_update or pkgs['install']:
                 res['changed'] = True
@@ -1285,7 +1296,18 @@ class YumModule(YumDnf):
         if cmd:     # update all
             rc, out, err = self.module.run_command(cmd)
             res['changed'] = True
-        elif pkgs['install'] or will_update:
+        elif self.update_only:
+            if pkgs['update']:
+                cmd = self.yum_basecmd + ['update'] + pkgs['update']
+                lang_env = dict(LANG='C', LC_ALL='C', LC_MESSAGES='C')
+                rc, out, err = self.module.run_command(cmd, environ_update=lang_env)
+                out_lower = out.strip().lower()
+                if not out_lower.endswith("no packages marked for update") and \
+                        not out_lower.endswith("nothing to do"):
+                    res['changed'] = True
+            else:
+                rc, out, err = [0, '', '']
+        elif pkgs['install'] or will_update and not self.update_only:
             cmd = self.yum_basecmd + ['install'] + pkgs['install'] + pkgs['update']
             lang_env = dict(LANG='C', LC_ALL='C', LC_MESSAGES='C')
             rc, out, err = self.module.run_command(cmd, environ_update=lang_env)
@@ -1403,13 +1425,7 @@ class YumModule(YumDnf):
                         self.module.fail_json(msg="Error setting/accessing repos: %s" % to_native(e))
             except yum.Errors.YumBaseError as e:
                 self.module.fail_json(msg="Error accessing repos: %s" % to_native(e))
-        if self.state in ('installed', 'present'):
-            if self.disable_gpg_check:
-                self.yum_basecmd.append('--nogpgcheck')
-            res = self.install(pkgs, repoq)
-        elif self.state in ('removed', 'absent'):
-            res = self.remove(pkgs, repoq)
-        elif self.state == 'latest':
+        if self.state == 'latest' or self.update_only:
             if self.disable_gpg_check:
                 self.yum_basecmd.append('--nogpgcheck')
             if self.security:
@@ -1417,6 +1433,12 @@ class YumModule(YumDnf):
             if self.bugfix:
                 self.yum_basecmd.append('--bugfix')
             res = self.latest(pkgs, repoq)
+        elif self.state in ('installed', 'present'):
+            if self.disable_gpg_check:
+                self.yum_basecmd.append('--nogpgcheck')
+            res = self.install(pkgs, repoq)
+        elif self.state in ('removed', 'absent'):
+            res = self.remove(pkgs, repoq)
         else:
             # should be caught by AnsibleModule argument_spec
             self.module.fail_json(

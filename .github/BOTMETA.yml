@@ -53,6 +53,7 @@ files:
   $modules/cloud/amazon/ec2_asg.py: $team_ansible s-hertel ryansb
   $modules/cloud/amazon/ec2_group.py: $team_ansible
   $modules/cloud/amazon/ec2_group_facts.py: willthames
+  $modules/cloud/amazon/ec2_instance.py: Shaps
   $modules/cloud/amazon/ec2_instance_facts.py: willthames
   $modules/cloud/amazon/ec2_key.py: $team_ansible
   $modules/cloud/amazon/ec2_lc.py: $team_ansible
@@ -124,6 +125,8 @@ files:
   $modules/cloud/profitbricks/: baldwinSPC
   $modules/cloud/rackspace/:
     ignored: sivel angstwad
+  $modules/cloud/scaleway/scaleway_volume.py:
+    ignored: hekonsek
   $modules/cloud/univention/: 2-B
   $modules/cloud/vmware/:
     maintainers: $team_vmware
@@ -199,6 +202,7 @@ files:
     labels:
       - networking
       - infoblox
+  $modules/net_tools/netbox/: fragmentedpacket
   $modules/network/a10/: ericchou1 mischapeters
   $modules/network/aci/: $team_aci
   $modules/network/aireos/: jmighion
@@ -222,6 +226,7 @@ files:
     maintainers: caphrim007
   $modules/network/files/: $team_networking
   $modules/network/fortios/: bjolivot
+  $modules/network/fortimanager/: $team_fortimanager
   $modules/network/illumos/: xen0l
   $modules/network/interface/: $team_networking
   $modules/network/ios/: rcarrillocruz
@@ -458,6 +463,8 @@ files:
       - cloud
   $module_utils/acme.py:
     maintainers: resmo felixfontein
+  $module_utils/basic.py:
+    support: core
   $module_utils/cloudstack.py:
     maintainers: $team_cloudstack
     labels: cloudstack
@@ -532,6 +539,11 @@ files:
       - f5
   $module_utils/network/fortios:
     maintainers: bjolivot
+  $module_utils/network/fortimanager:
+    maintainers: $team_fortimanager
+    labels:
+      - fortimanager
+      - networking
   $module_utils/network/ios:
     support: network
     maintainers: $team_networking
@@ -604,7 +616,6 @@ files:
   $module_utils/utm_utils.py:
     maintainers: $team_e_spirit
   $module_utils/vmware:
-    support: core
     maintainers: $team_vmware
   $module_utils/memset.py:
     maintainers: analbeard
@@ -1068,8 +1079,9 @@ files:
   test/utils/shippable/:
     notified: mattclay
   test/integration/targets/aci: *aci
-  test/integration/targets/meraki: *meraki
   test/integration/targets/docker: $team_docker
+  test/integration/targets/meraki: *meraki
+  test/integration/targets/msc: *aci
   test/integration/targets/nxos:
     maintainers: $team_nxos
     labels:
@@ -1134,7 +1146,7 @@ macros:
   team_rabbitmq: chrishoffman manuel-sousa hyperized
   team_redfish: jose-delarosa mraineri tomasg2012 billdodd
   team_rhn: alikins barnabycourt flossware vritant
-  team_scaleway: sieben hekonsek Spredzy abarbare anthony25 pilou-
+  team_scaleway: sieben Spredzy abarbare anthony25 pilou-
   team_tower: ghjm jlaska matburt wwitzel3 simfarm ryanpetrello rooftopcellist AlanCoding
   team_ucs: dsoper2 johnamcdonough SDBrett vallard vvb dagwieers
   team_e_spirit: MatrixCrawler getjack
@@ -1142,3 +1154,4 @@ macros:
   team_vultr: resmo Spredzy
   team_windows: dagwieers jborean93 jhawkesworth nitzmahone
   team_windows_core: nitzmahone jborean93
+  team_fortimanager: Ghilli3 lweighall p4r4n0y1ng Ftntcorecse
