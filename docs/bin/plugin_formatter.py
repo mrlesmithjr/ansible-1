@@ -64,7 +64,7 @@ from ansible.utils._build_helpers import update_file_if_different
 
 # if a module is added in a version of Ansible older than this, don't print the version added information
 # in the module documentation because everyone is assumed to be running something newer than this already.
-TOO_OLD_TO_BE_NOTABLE = 1.3
+TOO_OLD_TO_BE_NOTABLE = 2.0
 
 # Get parent directory of the directory this script lives in
 MODULEDIR = os.path.abspath(os.path.join(
@@ -185,9 +185,25 @@ def write_data(text, output_dir, outputname, module=None):
         fname = os.path.join(output_dir, outputname)
         fname = fname.replace(".py", "")
 
-        update_file_if_different(fname, to_bytes(text))
+        try:
+            updated = update_file_if_different(fname, to_bytes(text))
+        except Exception as e:
+            display.display("while rendering %s, an error occured: %s" % (module, e))
+            raise
+        if updated:
+            display.display("rendering: %s" % module)
     else:
         print(text)
+
+
+IS_STDOUT_TTY = sys.stdout.isatty()
+
+
+def show_progress(progress):
+    '''Show a little process indicator.'''
+    if IS_STDOUT_TTY:
+        sys.stdout.write('\r%s\r' % ("-/|\\"[progress % 4]))
+        sys.stdout.flush()
 
 
 def get_plugin_info(module_dir, limit_to=None, verbose=False):
@@ -207,6 +223,7 @@ def get_plugin_info(module_dir, limit_to=None, verbose=False):
             :aliases: set of aliases to this module name
             :metadata: The modules metadata (as recorded in the module)
             :doc: The documentation structure for the module
+            :seealso: The list of dictionaries with references to related subjects
             :examples: The module's examples
             :returndocs: The module's returndocs
 
@@ -230,6 +247,7 @@ def get_plugin_info(module_dir, limit_to=None, verbose=False):
         glob.glob("%s/*/*/*/*.py" % module_dir)
     )
 
+    module_index = 0
     for module_path in files:
         # Do not list __init__.py files
         if module_path.endswith('__init__.py'):
@@ -264,6 +282,9 @@ def get_plugin_info(module_dir, limit_to=None, verbose=False):
         #
         # Regular module to process
         #
+
+        module_index += 1
+        show_progress(module_index)
 
         # use ansible core library to parse out doc metadata YAML and plaintext examples
         doc, examples, returndocs, metadata = plugin_docs.get_docstring(module_path, fragment_loader, verbose=verbose)
@@ -334,7 +355,7 @@ def generate_parser():
     p.add_option("-A", "--ansible-version", action="store", dest="ansible_version", default="unknown", help="Ansible version number")
     p.add_option("-M", "--module-dir", action="store", dest="module_dir", default=MODULEDIR, help="Ansible library path")
     p.add_option("-P", "--plugin-type", action="store", dest="plugin_type", default='module', help="The type of plugin (module, lookup, etc)")
-    p.add_option("-T", "--template-dir", action="store", dest="template_dir", default="hacking/templates", help="directory containing Jinja2 templates")
+    p.add_option("-T", "--template-dir", action="append", dest="template_dir", help="directory containing Jinja2 templates")
     p.add_option("-t", "--type", action='store', dest='type', choices=['rst'], default='rst', help="Document type")
     p.add_option("-o", "--output-dir", action="store", dest="output_dir", default=None, help="Output directory for module files")
     p.add_option("-I", "--includes-file", action="store", dest="includes_file", default=None, help="Create a file containing list of processed modules")
@@ -363,7 +384,7 @@ def jinja2_environment(template_dir, typ, plugin_type):
 
     templates = {}
     if typ == 'rst':
-        env.filters['convert_symbols_to_format'] = rst_ify
+        env.filters['rst_ify'] = rst_ify
         env.filters['html_ify'] = html_ify
         env.filters['fmt'] = rst_fmt
         env.filters['xline'] = rst_xline
@@ -398,9 +419,10 @@ def too_old(added):
 
 
 def process_plugins(module_map, templates, outputname, output_dir, ansible_version, plugin_type):
-    for module in module_map:
+    for module_index, module in enumerate(module_map):
 
-        display.display("rendering: %s" % module)
+        show_progress(module_index)
+
         fname = module_map[module]['path']
         display.vvvvv(pp.pformat(('process_plugins info: ', module_map[module])))
 
@@ -651,9 +673,13 @@ def main():
     # INIT
     p = generate_parser()
     (options, args) = p.parse_args()
+    if not options.template_dir:
+        options.template_dir = ["hacking/templates"]
     validate_options(options)
     display.verbosity = options.verbosity
     plugin_type = options.plugin_type
+
+    display.display("Evaluating %s files..." % plugin_type)
 
     # prep templating
     templates = jinja2_environment(options.template_dir, options.type, plugin_type)
@@ -679,15 +705,18 @@ def main():
 
     categories['all'] = {'_modules': plugin_info.keys()}
 
-    display.vvv(pp.pformat(categories))
-    display.vvvvv(pp.pformat(plugin_info))
+    if display.verbosity >= 3:
+        display.vvv(pp.pformat(categories))
+    if display.verbosity >= 5:
+        display.vvvvv(pp.pformat(plugin_info))
 
     # Transform the data
     if options.type == 'rst':
         display.v('Generating rst')
         for key, record in plugin_info.items():
             display.vv(key)
-            display.vvvvv(pp.pformat(('record', record)))
+            if display.verbosity >= 5:
+                display.vvvvv(pp.pformat(('record', record)))
             if record.get('doc', None):
                 short_desc = record['doc']['short_description'].rstrip('.')
                 if short_desc is None:

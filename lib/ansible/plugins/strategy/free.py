@@ -137,7 +137,7 @@ class StrategyModule(StrategyBase):
                         try:
                             task.name = to_text(templar.template(task.name, fail_on_undefined=False), nonstring='empty')
                             display.debug("done templating", host=host_name)
-                        except:
+                        except Exception:
                             # just ignore any errors during task name templating,
                             # we don't care if it just shows the raw name
                             display.debug("templating failed for some reason", host=host_name)
@@ -225,7 +225,6 @@ class StrategyModule(StrategyBase):
                                 variable_manager=self._variable_manager,
                                 loader=self._loader,
                             )
-                            self._tqm.update_handler_list([handler for handler_block in handler_blocks for handler in handler_block.block])
                         else:
                             new_blocks = self._load_included_file(included_file, iterator=iterator)
                     except AnsibleError as e:

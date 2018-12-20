@@ -90,11 +90,11 @@ ansible_net_version:
 ansible_net_hostname:
   description: The configured hostname of the device
   returned: always
-  type: string
+  type: str
 ansible_net_image:
   description: The image file the device is running
   returned: always
-  type: string
+  type: str
 
 # hardware
 ansible_net_filesystems:
@@ -495,7 +495,7 @@ class Interfaces(FactsBase):
             objects[local_intf] = list()
             nbor = dict()
             nbor['port'] = item['port_id']
-            nbor['sysname'] = item['chassis_id']
+            nbor['host'] = nbor['sysname'] = item['chassis_id']
             objects[local_intf].append(nbor)
 
         return objects
@@ -512,7 +512,7 @@ class Interfaces(FactsBase):
             objects[local_intf] = list()
             nbor = dict()
             nbor['port'] = item['port_id']
-            nbor['sysname'] = item['device_id']
+            nbor['host'] = nbor['sysname'] = item['device_id']
             objects[local_intf].append(nbor)
 
         return objects
@@ -645,7 +645,9 @@ class Interfaces(FactsBase):
         for item in data.split('\n')[4:-1]:
             match = regex.match(item)
             if match:
-                nbor = {'host': match.group(1), 'port': match.group(3)}
+                nbor = dict()
+                nbor['host'] = nbor['sysname'] = match.group(1)
+                nbor['port'] = match.group(3)
                 local_intf = normalize_interface(match.group(2))
                 if local_intf not in objects:
                     objects[local_intf] = []

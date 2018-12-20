@@ -291,13 +291,14 @@ class NetworkConnectionBase(ConnectionBase):
 
     def __init__(self, play_context, new_stdin, *args, **kwargs):
         super(NetworkConnectionBase, self).__init__(play_context, new_stdin, *args, **kwargs)
+        self._messages = []
 
         self._network_os = self._play_context.network_os
 
         self._local = connection_loader.get('local', play_context, '/dev/null')
         self._local.set_options()
 
-        self._sub_plugins = []
+        self._sub_plugin = {}
         self._cached_variables = (None, None, None)
 
         # reconstruct the socket_path and set instance values accordingly
@@ -309,14 +310,29 @@ class NetworkConnectionBase(ConnectionBase):
             return self.__dict__[name]
         except KeyError:
             if not name.startswith('_'):
-                for plugin in self._sub_plugins:
-                    method = getattr(plugin['obj'], name, None)
+                plugin = self._sub_plugin.get('obj')
+                if plugin:
+                    method = getattr(plugin, name, None)
                     if method is not None:
                         return method
             raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
         return self._local.exec_command(cmd, in_data, sudoable)
+
+    def queue_message(self, level, message):
+        """
+        Adds a message to the queue of messages waiting to be pushed back to the controller process.
+
+        :arg level: A string which can either be the name of a method in display, or 'log'. When
+            the messages are returned to task_executor, a value of log will correspond to
+            ``display.display(message, log_only=True)``, while another value will call ``display.[level](message)``
+        """
+        self._messages.append((level, message))
+
+    def pop_messages(self):
+        messages, self._messages = self._messages, []
+        return messages
 
     def put_file(self, in_path, out_path):
         """Transfer a file from local to remote"""
@@ -331,9 +347,9 @@ class NetworkConnectionBase(ConnectionBase):
         Reset the connection
         '''
         if self._socket_path:
-            display.vvvv('resetting persistent connection for socket_path %s' % self._socket_path, host=self._play_context.remote_addr)
+            self.queue_message('vvvv', 'resetting persistent connection for socket_path %s' % self._socket_path)
             self.close()
-        display.vvvv('reset call on connection instance', host=self._play_context.remote_addr)
+        self.queue_message('vvvv', 'reset call on connection instance')
 
     def close(self):
         if self._connected:
@@ -342,12 +358,11 @@ class NetworkConnectionBase(ConnectionBase):
     def set_options(self, task_keys=None, var_options=None, direct=None):
         super(NetworkConnectionBase, self).set_options(task_keys=task_keys, var_options=var_options, direct=direct)
 
-        for plugin in self._sub_plugins:
-            if plugin['type'] != 'external':
-                try:
-                    plugin['obj'].set_options(task_keys=task_keys, var_options=var_options, direct=direct)
-                except AttributeError:
-                    pass
+        if self._sub_plugin.get('obj') and self._sub_plugin.get('type') != 'external':
+            try:
+                self._sub_plugin['obj'].set_options(task_keys=task_keys, var_options=var_options, direct=direct)
+            except AttributeError:
+                pass
 
     def _update_connection_state(self):
         '''

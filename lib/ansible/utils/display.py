@@ -103,7 +103,7 @@ class Display(with_metaclass(Singleton, object)):
                 self.cows_available = set([to_text(c) for c in out.split()])
                 if C.ANSIBLE_COW_WHITELIST:
                     self.cows_available = set(C.ANSIBLE_COW_WHITELIST).intersection(self.cows_available)
-            except:
+            except Exception:
                 # could not execute cowsay for some reason
                 self.b_cowsay = False
 
@@ -248,7 +248,7 @@ class Display(with_metaclass(Singleton, object)):
 
     def banner(self, msg, color=None, cows=True):
         '''
-        Prints a header-looking line with cowsay or stars wit hlength depending on terminal width (3 minimum)
+        Prints a header-looking line with cowsay or stars with length depending on terminal width (3 minimum)
         '''
         if self.b_cowsay and cows:
             try:

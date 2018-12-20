@@ -20,9 +20,6 @@ description:
 - Downloads files from HTTP, HTTPS, or FTP to the remote server. The remote
   server I(must) have direct access to the remote resource.
 - For non-Windows targets, use the M(get_url) module instead.
-author:
-- Paul Durivage (@angstwad)
-- Takeshi Kuramochi (@tksarah)
 options:
   url:
     description:
@@ -108,6 +105,13 @@ notes:
 - If your URL includes an escaped slash character (%2F) this module will convert it to a real slash.
   This is a result of the behaviour of the System.Uri class as described in
   L(the documentation,https://docs.microsoft.com/en-us/dotnet/framework/configure-apps/file-schema/network/schemesettings-element-uri-settings#remarks).
+seealso:
+- module: get_url
+- module: uri
+- module: win_uri
+author:
+- Paul Durivage (@angstwad)
+- Takeshi Kuramochi (@tksarah)
 '''
 
 EXAMPLES = r'''
@@ -142,7 +146,7 @@ RETURN = r'''
 dest:
     description: destination file/path
     returned: always
-    type: string
+    type: str
     sample: C:\Users\RandomUser\earthrise.jpg
 elapsed:
     description: The elapsed seconds between the start of poll and the end of the module.
@@ -152,12 +156,12 @@ elapsed:
 url:
     description: requested url
     returned: always
-    type: string
+    type: str
     sample: http://www.example.com/earthrise.jpg
 msg:
     description: Error message, or HTTP status message from web-server
     returned: always
-    type: string
+    type: str
     sample: OK
 status_code:
     description: HTTP status code

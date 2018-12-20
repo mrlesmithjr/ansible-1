@@ -55,17 +55,25 @@ def ensure_type(value, value_type, origin=None):
     :arg value: The value to ensure correct typing of
     :kwarg value_type: The type of the value.  This can be any of the following strings:
         :boolean: sets the value to a True or False value
+        :bool: Same as 'boolean'
         :integer: Sets the value to an integer or raises a ValueType error
+        :int: Same as 'integer'
         :float: Sets the value to a float or raises a ValueType error
         :list: Treats the value as a comma separated list.  Split the value
             and return it as a python list.
         :none: Sets the value to None
         :path: Expands any environment variables and tilde's in the value.
-        :tmp_path: Create a unique temporary directory inside of the directory
+        :tmppath: Create a unique temporary directory inside of the directory
             specified by value and return its path.
+        :temppath: Same as 'tmppath'
+        :tmp: Same as 'tmppath'
         :pathlist: Treat the value as a typical PATH string.  (On POSIX, this
             means colon separated strings.)  Split the value and then expand
             each part for environment variables and tildes.
+        :pathspec: Treat the value as a PATH string. Expands any environment variables
+            tildes's in the value.
+        :str: Sets the value to string types.
+        :string: Same as 'str'
     '''
 
     basedir = None
@@ -125,7 +133,7 @@ def ensure_type(value, value_type, origin=None):
 
 # FIXME: see if this can live in utils/path
 def resolve_path(path, basedir=None):
-    ''' resolve relative or 'varaible' paths '''
+    ''' resolve relative or 'variable' paths '''
     if '{{CWD}}' in path:  # allow users to force CWD using 'magic' {{CWD}}
         path = path.replace('{{CWD}}', os.getcwd())
 
@@ -431,11 +439,11 @@ class ConfigManager(object):
                     else:
                         value = defs[config].get('default')
                         origin = 'default'
-                        # skip typing as this is a temlated default that will be resolved later in constants, which has needed vars
+                        # skip typing as this is a templated default that will be resolved later in constants, which has needed vars
                         if plugin_type is None and isinstance(value, string_types) and (value.startswith('{{') and value.endswith('}}')):
                             return value, origin
 
-            # ensure correct type, can raise exceptoins on mismatched types
+            # ensure correct type, can raise exceptions on mismatched types
             try:
                 value = ensure_type(value, defs[config].get('type'), origin=origin)
             except ValueError as e:

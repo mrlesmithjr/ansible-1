@@ -19,8 +19,6 @@ description:
   - The behavior is designed to ignore inherited rules since those cannot be adjusted without first disabling
     the inheritance behavior. It will still print inherited rules in the output though for debugging purposes.
 version_added: "2.5"
-author:
-  - Noah Sparks (@nwsparks)
 options:
   path:
     description:
@@ -74,6 +72,10 @@ options:
       - Specifying C(absent) will remove all rules matching the defined I(user).
     choices: [ absent, present ]
     default: present
+seealso:
+- module: win_audit_policy_system
+author:
+  - Noah Sparks (@nwsparks)
 '''
 
 EXAMPLES = r'''
@@ -119,7 +121,7 @@ current_audit_rules:
     - The current rules on the defined I(path)
     - Will return "No audit rules defined on I(path)"
   returned: always
-  type: dictionary
+  type: dict
   sample: |
     {
       "audit_flags": "Success",
@@ -134,5 +136,5 @@ path_type:
     - The type of I(path) being targetted.
     - Will be one of file, directory, registry.
   returned: always
-  type: string
+  type: str
 '''

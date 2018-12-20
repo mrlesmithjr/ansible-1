@@ -900,9 +900,9 @@ class TaskExecutor:
         final_vars = combine_vars(variables, variables.get('ansible_delegated_vars', dict()).get(self._task.delegate_to, dict()))
 
         option_vars = C.config.get_plugin_vars('connection', connection._load_name)
-        for plugin in connection._sub_plugins:
-            if plugin['type'] != 'external':
-                option_vars.extend(C.config.get_plugin_vars(plugin['type'], plugin['name']))
+        plugin = connection._sub_plugin
+        if plugin['type'] != 'external':
+            option_vars.extend(C.config.get_plugin_vars(plugin['type'], plugin['name']))
 
         options = {}
         for k in option_vars:
@@ -1027,8 +1027,16 @@ class TaskExecutor:
                 result = {'error': to_text(stderr, errors='surrogate_then_replace')}
 
         if 'messages' in result:
-            for msg in result.get('messages'):
-                display.vvvv('%s' % msg, host=self._play_context.remote_addr)
+            for level, message in result['messages']:
+                if level == 'log':
+                    display.display(message, log_only=True)
+                elif level in ('debug', 'v', 'vv', 'vvv', 'vvvv', 'vvvvv', 'vvvvvv'):
+                    getattr(display, level)(message, host=self._play_context.remote_addr)
+                else:
+                    if hasattr(display, level):
+                        getattr(display, level)(message)
+                    else:
+                        display.vvvv(message, host=self._play_context.remote_addr)
 
         if 'error' in result:
             if self._play_context.verbosity > 2:

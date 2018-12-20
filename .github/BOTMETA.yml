@@ -129,7 +129,7 @@ files:
     ignored: sivel angstwad
   $modules/cloud/scaleway/scaleway_volume.py:
     ignored: hekonsek
-  $modules/cloud/univention/: 2-b
+  $modules/cloud/univention/: keachi
   $modules/cloud/vmware/:
     maintainers: $team_vmware
     ignored: cigamit jcpowermac mtnbikenc
@@ -223,6 +223,7 @@ files:
   $modules/network/dellos6/: abirami-n skg-net
   $modules/network/dellos9/: Dhivyap skg-net
   $modules/network/edgeos/: samdoran
+  $modules/network/edgeswitch/: f-bor
   $modules/network/enos/: amuraleedhar
   $modules/network/eos/: trishnaguha
   $modules/network/exos/: rdvencioneck
@@ -310,6 +311,7 @@ files:
   $modules/remote_management/redfish/: $team_redfish
   $modules/remote_management/stacki/stacki_host.py: bbyhuy bsanders
   $modules/remote_management/ucs/: $team_ucs
+  $modules/remote_management/dellemc/: rajeevarakkal
   $modules/source_control/git.py: $team_ansible
   $modules/source_control/github_key.py:
     ignored: erydo
@@ -490,6 +492,11 @@ files:
       - windows
   $module_utils/docker_common.py:
     maintainers: $team_docker
+  $module_utils/ec2.py:
+    support: core
+    labels:
+      - aws
+      - cloud
   $module_utils/facts:
     support: core
   $module_utils/ipa.py:
@@ -543,6 +550,8 @@ files:
     maintainers: skg-net
   $module_utils/network/dellos10:
     maintainers: skg-net
+  $module_utils/network/edgeswitch:
+    maintainers: f-bor
   $module_utils/network/enos:
     maintainers: amuraleedhar
   $module_utils/network/eos:
@@ -623,6 +632,8 @@ files:
   $module_utils/remote_management/ucs:
     maintainers: $team_ucs
     labels: ucs
+  $module_utils/remote_management/dellemc:
+    maintainers: rajeevarakkal
   $module_utils/pure.py:
     maintainers: $team_purestorage
     labels: pure_storage
@@ -837,6 +848,8 @@ files:
 
   $plugins/cliconf/:
     labels: networking
+  $plugins/cliconf/edgeswitch.py:
+    maintainers: f-bor
   $plugins/cliconf/eos.py:
     support: network
     maintainers: $team_networking
@@ -1028,6 +1041,8 @@ files:
     maintainers: skg-net
   $plugins/terminal/edgeos.py:
     maintainers: samdoran
+  $plugins/terminal/edgeswitch.py:
+    maintainers: f-bor
   $plugins/terminal/eos.py:
     support: network
     maintainers: $team_networking
@@ -1112,7 +1127,6 @@ files:
     labels: networking
     maintainers:
       - samccann
-      - gundalow
   docs/docsite/rst/scenario_guides/guide_aci.rst: *aci
   docs/docsite/rst/dev_guide/developing_modules_general_aci.rst: *aci
 ###############################
