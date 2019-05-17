@@ -23,7 +23,6 @@ version_added: "1.0"
 author:
     - Indrajit Raychaudhuri (@indrajitr)
     - Aaron Bull Schaefer (@elasticdog) <aaron@elasticdog.com>
-    - Kevin Karsopawiro (@Afterburn)
     - Maxime de Roucy (@tchernomax)
 options:
     name:
@@ -475,6 +474,8 @@ def main():
             install_packages(module, pacman_path, p['state'], pkgs, pkg_files)
         elif p['state'] == 'absent':
             remove_packages(module, pacman_path, pkgs)
+    else:
+        module.exit_json(changed=False, msg="No package specified to work on.")
 
 
 if __name__ == "__main__":

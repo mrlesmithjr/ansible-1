@@ -27,6 +27,7 @@ options:
   path:
     description:
     - Path to the file being managed.
+    type: path
     required: yes
     aliases: [ dest, name ]
   state:
@@ -36,26 +37,30 @@ options:
       not exist as the state did not change.
     - If C(directory), all intermediate subdirectories will be created if they
       do not exist. Since Ansible 1.7 they will be created with the supplied permissions.
-    - If C(file), the file will NOT be created if it does not exist; see the C(touch)
-      value or the M(copy) or M(template) module if you want that behavior.
+    - If C(file), without any other options this works mostly as a 'stat' and will return the current state of C(path).
+      Even with other options (i.e C(mode)), the file will be modified but will NOT be created if it does not exist;
+      see the C(touch) value or the M(copy) or M(template) module if you want that behavior.
     - If C(hard), the hard link will be created or changed.
     - If C(link), the symbolic link will be created or changed.
     - If C(touch) (new in 1.4), an empty file will be created if the C(path) does not
       exist, while an existing file or directory will receive updated file access and
       modification times (similar to the way C(touch) works from the command line).
+    type: str
     default: file
     choices: [ absent, directory, file, hard, link, touch ]
   src:
     description:
     - Path of the file to link to.
     - This applies only to C(state=link) and C(state=hard).
-    - Will accept absolute, relative and non-existing paths.
+    - Will accept absolute and non-existing paths.
+    - Will accept relative paths unless state=hard.
     - Relative paths are relative to the file being created (C(path)) which is how
       the Unix command C(ln -s SRC DEST) treats relative paths.
+    type: path
   recurse:
     description:
     - Recursively set the specified file attributes on directory contents.
-    - This applies only to C(state=directory).
+    - This applies only when C(state) is set to C(directory).
     type: bool
     default: no
     version_added: '1.1'
@@ -79,11 +84,13 @@ options:
     - This parameter indicates the time the file's modification time should be set to.
     - Should be C(preserve) when no modification is required, C(YYYYMMDDHHMM.SS) when using default time format, or C(now).
     - Default is None meaning that C(preserve) is the default for C(state=[file,directory,link,hard]) and C(now) is default for C(state=touch).
+    type: str
     version_added: "2.7"
   modification_time_format:
     description:
     - When used with C(modification_time), indicates the time format that must be used.
     - Based on default Python format (see time.strftime doc).
+    type: str
     default: "%Y%m%d%H%M.%S"
     version_added: '2.7'
   access_time:
@@ -91,15 +98,15 @@ options:
     - This parameter indicates the time the file's access time should be set to.
     - Should be C(preserve) when no modification is required, C(YYYYMMDDHHMM.SS) when using default time format, or C(now).
     - Default is C(None) meaning that C(preserve) is the default for C(state=[file,directory,link,hard]) and C(now) is default for C(state=touch).
+    type: str
     version_added: '2.7'
   access_time_format:
     description:
     - When used with C(access_time), indicates the time format that must be used.
     - Based on default Python format (see time.strftime doc).
+    type: str
     default: "%Y%m%d%H%M.%S"
     version_added: '2.7'
-notes:
-- For Windows targets, use the M(win_file) module instead.
 seealso:
 - module: assemble
 - module: copy
@@ -111,21 +118,19 @@ author:
 - Michael DeHaan
 '''
 
-EXAMPLES = '''
+EXAMPLES = r'''
 - name: Change file ownership, group and permissions
   file:
     path: /etc/foo.conf
     owner: foo
     group: foo
-    # When specifying mode using octal numbers, add a leading 0
-    mode: 0644
+    mode: '0644'
 
 - name: Create an insecure file
   file:
     path: /work
     owner: root
     group: root
-    # Or use quotes instead
     mode: '1777'
 
 - name: Create a symbolic link
@@ -169,7 +174,7 @@ EXAMPLES = '''
   file:
     path: /etc/some_directory
     state: directory
-    mode: 0755
+    mode: '0755'
 
 - name: Update modification and access time of given file
   file:
@@ -177,8 +182,23 @@ EXAMPLES = '''
     state: file
     modification_time: now
     access_time: now
+
+- name: Set access time based on seconds from epoch value
+  file:
+    path: /etc/another_file
+    state: file
+    access_time: '{{ "%Y%m%d%H%M.%S" | strftime(stat_var.stat.atime) }}'
+
+- name: Recursively change ownership of a directory
+  file:
+    path: /etc/foo
+    state: directory
+    recurse: yes
+    owner: foo
+    group: foo
+
 '''
-RETURN = '''
+RETURN = r'''
 
 '''
 
@@ -206,6 +226,11 @@ class AnsibleModuleError(Exception):
 
 class ParameterError(AnsibleModuleError):
     pass
+
+
+class Sentinel(object):
+    def __new__(cls, *args, **kwargs):
+        return cls
 
 
 def _ansible_excepthook(exc_type, exc_value, tb):
@@ -346,8 +371,7 @@ def get_timestamp_for_time(formatted_time, time_format):
     if formatted_time == 'preserve':
         return None
     elif formatted_time == 'now':
-        current_time = time.time()
-        return current_time
+        return Sentinel
     else:
         try:
             struct = time.strptime(formatted_time, time_format)
@@ -360,25 +384,45 @@ def get_timestamp_for_time(formatted_time, time_format):
 
 
 def update_timestamp_for_file(path, mtime, atime, diff=None):
-    # If both parameters are None, nothing to do
-    if mtime is None and atime is None:
-        return False
+    b_path = to_bytes(path, errors='surrogate_or_strict')
 
     try:
-        previous_mtime = os.stat(path).st_mtime
-        previous_atime = os.stat(path).st_atime
+        # When mtime and atime are set to 'now', rely on utime(path, None) which does not require ownership of the file
+        # https://github.com/ansible/ansible/issues/50943
+        if mtime is Sentinel and atime is Sentinel:
+            # It's not exact but we can't rely on os.stat(path).st_mtime after setting os.utime(path, None) as it may
+            # not be updated. Just use the current time for the diff values
+            mtime = atime = time.time()
 
-        if mtime is None:
-            mtime = previous_mtime
+            previous_mtime = os.stat(b_path).st_mtime
+            previous_atime = os.stat(b_path).st_atime
 
-        if atime is None:
-            atime = previous_atime
+            set_time = None
+        else:
+            # If both parameters are None 'preserve', nothing to do
+            if mtime is None and atime is None:
+                return False
 
-        # If both timestamps are already ok, nothing to do
-        if mtime == previous_mtime and atime == previous_atime:
-            return False
+            previous_mtime = os.stat(b_path).st_mtime
+            previous_atime = os.stat(b_path).st_atime
 
-        os.utime(path, (atime, mtime))
+            if mtime is None:
+                mtime = previous_mtime
+            elif mtime is Sentinel:
+                mtime = time.time()
+
+            if atime is None:
+                atime = previous_atime
+            elif atime is Sentinel:
+                atime = time.time()
+
+            # If both timestamps are already ok, nothing to do
+            if mtime == previous_mtime and atime == previous_atime:
+                return False
+
+            set_time = (atime, mtime)
+
+        os.utime(b_path, set_time)
 
         if diff is not None:
             if 'before' not in diff:
@@ -444,9 +488,9 @@ def ensure_absent(path):
                                                           'path': path})
 
         diff = initial_diff(path, 'absent', prev_state)
-        result.update({'path': path, 'changed': True, 'diff': diff})
+        result.update({'path': path, 'changed': True, 'diff': diff, 'state': 'absent'})
     else:
-        result.update({'path': path, 'changed': False})
+        result.update({'path': path, 'changed': False, 'state': 'absent'})
 
     return result
 
@@ -817,21 +861,21 @@ def main():
 
     module = AnsibleModule(
         argument_spec=dict(
-            state=dict(choices=['file', 'directory', 'link', 'hard', 'touch', 'absent'], default=None),
-            path=dict(aliases=['dest', 'name'], required=True, type='path'),
-            _original_basename=dict(required=False),  # Internal use only, for recursive ops
-            recurse=dict(default=False, type='bool'),
-            force=dict(required=False, default=False, type='bool'),  # Note: Should not be in file_common_args in future
-            follow=dict(required=False, default=True, type='bool'),  # Note: Different default than file_common_args
-            _diff_peek=dict(default=None),  # Internal use only, for internal checks in the action plugins
-            src=dict(required=False, default=None, type='path'),  # Note: Should not be in file_common_args in future
-            modification_time=dict(required=False, default=None),
-            modification_time_format=dict(required=False, default='%Y%m%d%H%M.%S'),
-            access_time=dict(required=False, default=None),
-            access_time_format=dict(required=False, default='%Y%m%d%H%M.%S'),
+            state=dict(type='str', choices=['absent', 'directory', 'file', 'hard', 'link', 'touch']),
+            path=dict(type='path', required=True, aliases=['dest', 'name']),
+            _original_basename=dict(type='str'),  # Internal use only, for recursive ops
+            recurse=dict(type='bool', default=False),
+            force=dict(type='bool', default=False),  # Note: Should not be in file_common_args in future
+            follow=dict(type='bool', default=True),  # Note: Different default than file_common_args
+            _diff_peek=dict(type='str'),  # Internal use only, for internal checks in the action plugins
+            src=dict(type='path'),  # Note: Should not be in file_common_args in future
+            modification_time=dict(type='str'),
+            modification_time_format=dict(type='str', default='%Y%m%d%H%M.%S'),
+            access_time=dict(type='str'),
+            access_time_format=dict(type='str', default='%Y%m%d%H%M.%S'),
         ),
         add_file_common_args=True,
-        supports_check_mode=True
+        supports_check_mode=True,
     )
 
     # When we rewrite basic.py, we will do something similar to this on instantiating an AnsibleModule

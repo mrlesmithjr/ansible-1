@@ -16,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 RETURN = '''
 ---
 hosts:
-  description: List of Zabbix host. See https://www.zabbix.com/documentation/3.4/manual/api/reference/host/get for list of host values.
+  description: List of Zabbix hosts. See https://www.zabbix.com/documentation/3.4/manual/api/reference/host/get for list of host values.
   returned: success
   type: dict
   sample: [ { "available": "1", "description": "", "disable_until": "0", "error": "", "flags": "0", "groups": ["1"], "host": "Host A", ... } ]
@@ -30,7 +30,7 @@ description:
    - This module allows you to search for Zabbix host entries.
 version_added: "2.7"
 author:
-    - "Michael Miko (@redwhitemiko)"
+    - "Michael Miko (@RedWhiteMiko)"
 requirements:
     - "python >= 2.6"
     - zabbix-api
@@ -54,6 +54,13 @@ options:
             - Remove duplicate host from host result
         type: bool
         default: yes
+    host_inventory:
+        description:
+            - List of host inventory keys to display in result.
+            - Whole host inventory is retrieved if keys are not specified.
+        type: list
+        required: false
+        version_added: 2.8
 extends_documentation_fragment:
     - zabbix
 '''
@@ -66,6 +73,21 @@ EXAMPLES = '''
     login_user: username
     login_password: password
     host_name: ExampleHost
+    host_ip: 127.0.0.1
+    timeout: 10
+    exact_match: no
+    remove_duplicate: yes
+
+- name: Reduce host inventory information to provided keys
+  local_action:
+    module: zabbix_host_facts
+    server_url: http://monitor.example.com
+    login_user: username
+    login_password: password
+    host_name: ExampleHost
+    host_inventory:
+      - os
+      - tag
     host_ip: 127.0.0.1
     timeout: 10
     exact_match: no
@@ -98,18 +120,19 @@ class Host(object):
         self._module = module
         self._zapi = zbx
 
-    def get_hosts_by_host_name(self, host_name, exact_match):
+    def get_hosts_by_host_name(self, host_name, exact_match, host_inventory):
         """ Get host by host name """
         search_key = 'search'
         if exact_match:
             search_key = 'filter'
-        host_list = self._zapi.host.get({'output': 'extend', search_key: {'host': [host_name]}})
+        host_list = self._zapi.host.get({'output': 'extend', 'selectParentTemplates': ['name'], search_key: {'host': [host_name]},
+                                         'selectInventory': host_inventory})
         if len(host_list) < 1:
             self._module.fail_json(msg="Host not found: %s" % host_name)
         else:
             return host_list
 
-    def get_hosts_by_ip(self, host_ips):
+    def get_hosts_by_ip(self, host_ips, host_inventory):
         """ Get host by host ip(s) """
         hostinterfaces = self._zapi.hostinterface.get({
             'output': 'extend',
@@ -124,7 +147,9 @@ class Host(object):
             host = self._zapi.host.get({
                 'output': 'extend',
                 'selectGroups': 'extend',
-                'hostids': hostinterface['hostid']
+                'selectParentTemplates': ['name'],
+                'hostids': hostinterface['hostid'],
+                'selectInventory': host_inventory
             })
             host[0]['hostinterfaces'] = hostinterface
             host_list.append(host[0])
@@ -136,7 +161,6 @@ class Host(object):
         listed_hostnames = []
         for zabbix_host in hosts:
             if zabbix_host['name'] in listed_hostnames:
-                self._zapi.host.delete([zabbix_host['hostid']])
                 continue
             unique_hosts.append(zabbix_host)
             listed_hostnames.append(zabbix_host['name'])
@@ -156,7 +180,8 @@ def main():
             validate_certs=dict(type='bool', required=False, default=True),
             timeout=dict(type='int', default=10),
             exact_match=dict(type='bool', required=False, default=False),
-            remove_duplicate=dict(type='bool', required=False, default=True)
+            remove_duplicate=dict(type='bool', required=False, default=True),
+            host_inventory=dict(type='list', default=[], required=False)
         ),
         supports_check_mode=True
     )
@@ -175,6 +200,10 @@ def main():
     timeout = module.params['timeout']
     exact_match = module.params['exact_match']
     is_remove_duplicate = module.params['remove_duplicate']
+    host_inventory = module.params['host_inventory']
+
+    if not host_inventory:
+        host_inventory = 'extend'
 
     zbx = None
     # login to zabbix
@@ -188,7 +217,7 @@ def main():
     host = Host(module, zbx)
 
     if host_name:
-        hosts = host.get_hosts_by_host_name(host_name, exact_match)
+        hosts = host.get_hosts_by_host_name(host_name, exact_match, host_inventory)
         if is_remove_duplicate:
             hosts = host.delete_duplicate_hosts(hosts)
         extended_hosts = []
@@ -200,7 +229,7 @@ def main():
         module.exit_json(ok=True, hosts=extended_hosts)
 
     elif host_ips:
-        extended_hosts = host.get_hosts_by_ip(host_ips)
+        extended_hosts = host.get_hosts_by_ip(host_ips, host_inventory)
         if is_remove_duplicate:
             hosts = host.delete_duplicate_hosts(extended_hosts)
         module.exit_json(ok=True, hosts=extended_hosts)

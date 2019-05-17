@@ -25,6 +25,7 @@ from ansible.module_utils._text import to_text
 from ansible.parsing.splitter import parse_kv, split_args
 from ansible.plugins.loader import module_loader, action_loader
 from ansible.template import Templar
+from ansible.utils.sentinel import Sentinel
 
 
 # For filtering out modules correctly below
@@ -107,12 +108,13 @@ class ModuleArgsParser:
     Args may also be munged for certain shell command parameters.
     """
 
-    def __init__(self, task_ds=None):
+    def __init__(self, task_ds=None, collection_list=None):
         task_ds = {} if task_ds is None else task_ds
 
         if not isinstance(task_ds, dict):
             raise AnsibleAssertionError("the type of 'task_ds' should be a dict, but is a %s" % type(task_ds))
         self._task_ds = task_ds
+        self._collection_list = collection_list
 
     def _split_module_string(self, module_string):
         '''
@@ -258,7 +260,7 @@ class ModuleArgsParser:
         thing = None
 
         action = None
-        delegate_to = self._task_ds.get('delegate_to', None)
+        delegate_to = self._task_ds.get('delegate_to', Sentinel)
         args = dict()
 
         # This is the standard YAML form for command-type modules. We grab
@@ -286,7 +288,8 @@ class ModuleArgsParser:
 
         # walk the input dictionary to see we recognize a module name
         for (item, value) in iteritems(self._task_ds):
-            if item in BUILTIN_TASKS or item in action_loader or item in module_loader:
+            if item in BUILTIN_TASKS or action_loader.has_plugin(item, collection_list=self._collection_list) or \
+                    module_loader.has_plugin(item, collection_list=self._collection_list):
                 # finding more than one module name is a problem
                 if action is not None:
                     raise AnsibleParserError("conflicting action statements: %s, %s" % (action, item), obj=self._task_ds)

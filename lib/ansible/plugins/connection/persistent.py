@@ -37,6 +37,7 @@ import sys
 import termios
 
 from ansible import constants as C
+from ansible.plugins.loader import become_loader, cliconf_loader, connection_loader, httpapi_loader, netconf_loader, terminal_loader
 from ansible.plugins.connection import ConnectionBase
 from ansible.module_utils._text import to_text
 from ansible.module_utils.connection import Connection as SocketConnection, write_to_file_descriptor
@@ -98,11 +99,20 @@ class Connection(ConnectionBase):
             raise AnsibleError("Unable to find location of 'ansible-connection'. "
                                "Please set or check the value of ANSIBLE_CONNECTION_PATH")
 
+        env = os.environ.copy()
+        env.update({
+                   'ANSIBLE_BECOME_PLUGINS': become_loader.print_paths(),
+                   'ANSIBLE_CLICONF_PLUGINS': cliconf_loader.print_paths(),
+                   'ANSIBLE_CONNECTION_PLUGINS': connection_loader.print_paths(),
+                   'ANSIBLE_HTTPAPI_PLUGINS': httpapi_loader.print_paths(),
+                   'ANSIBLE_NETCONF_PLUGINS': netconf_loader.print_paths(),
+                   'ANSIBLE_TERMINAL_PLUGINS': terminal_loader.print_paths(),
+                   })
         python = sys.executable
         master, slave = pty.openpty()
         p = subprocess.Popen(
             [python, ansible_connection, to_text(os.getppid())],
-            stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
         )
         os.close(slave)
 
@@ -133,8 +143,16 @@ class Connection(ConnectionBase):
                 result = {'error': to_text(stderr, errors='surrogate_then_replace')}
 
         if 'messages' in result:
-            for msg in result.get('messages'):
-                display.vvvv('%s' % msg, host=self._play_context.remote_addr)
+            for level, message in result['messages']:
+                if level == 'log':
+                    display.display(message, log_only=True)
+                elif level in ('debug', 'v', 'vv', 'vvv', 'vvvv', 'vvvvv', 'vvvvvv'):
+                    getattr(display, level)(message, host=self._play_context.remote_addr)
+                else:
+                    if hasattr(display, level):
+                        getattr(display, level)(message)
+                    else:
+                        display.vvvv(message, host=self._play_context.remote_addr)
 
         if 'error' in result:
             if self._play_context.verbosity > 2:

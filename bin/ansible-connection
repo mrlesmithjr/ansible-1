@@ -113,6 +113,7 @@ class ConnectionProcess(object):
             self.sock.listen(1)
             messages.append(('vvvv', 'local domain socket listeners started successfully'))
         except Exception as exc:
+            messages.extend(self.connection.pop_messages())
             result['error'] = to_text(exc)
             result['exception'] = traceback.format_exc()
         finally:
@@ -130,16 +131,22 @@ class ConnectionProcess(object):
                 self.exception = None
                 (s, addr) = self.sock.accept()
                 signal.alarm(0)
-
                 signal.signal(signal.SIGALRM, self.command_timeout)
                 while True:
                     data = recv_data(s)
                     if not data:
                         break
+                    log_messages = self.connection.get_option('persistent_log_messages')
+
+                    if log_messages:
+                        display.display("jsonrpc request: %s" % data, log_only=True)
 
                     signal.alarm(self.connection.get_option('persistent_command_timeout'))
                     resp = self.srv.handle_request(data)
                     signal.alarm(0)
+
+                    if log_messages:
+                        display.display("jsonrpc response: %s" % resp, log_only=True)
 
                     send_data(s, to_bytes(resp))
 
@@ -304,7 +311,8 @@ def main():
                             'exception': traceback.format_exc()
                         })
 
-    messages.extend(Connection(socket_path).pop_messages())
+    if os.path.exists(socket_path):
+        messages.extend(Connection(socket_path).pop_messages())
     messages.append(('vvvv', sys.stdout.getvalue()))
     result.update({
         'messages': messages,

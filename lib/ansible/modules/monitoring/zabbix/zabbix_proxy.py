@@ -28,7 +28,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: zabbix_proxy
-short_description: Zabbix proxy creates/deletes/gets/updates
+short_description: Create/delete/get/update Zabbix proxies
 description:
    - This module allows you to create, modify, get and delete Zabbix proxy entries.
 version_added: "2.5"
@@ -44,7 +44,7 @@ options:
         required: true
     description:
         description:
-            - Description of the proxy..
+            - Description of the proxy.
         required: false
     status:
         description:
@@ -64,10 +64,11 @@ options:
         required: false
         choices: ['no_encryption','PSK','certificate']
         default: 'no_encryption'
-    tls_issuer:
+    ca_cert:
         description:
             - Certificate issuer.
         required: false
+        aliases: [ tls_issuer ]
     tls_subject:
         description:
             - Certificate subject.
@@ -102,7 +103,7 @@ extends_documentation_fragment:
 '''
 
 EXAMPLES = '''
-- name: Create a new proxy or update an existing proxies info
+- name: Create a new proxy or update an existing proxy
   local_action:
     module: zabbix_proxy
     server_url: http://monitor.example.com
@@ -248,7 +249,7 @@ def main():
                              choices=['no_encryption', 'PSK', 'certificate']),
             tls_accept=dict(default='no_encryption',
                             choices=['no_encryption', 'PSK', 'certificate']),
-            tls_issuer=dict(type='str', required=False, default=None),
+            ca_cert=dict(type='str', required=False, default=None, aliases=['tls_issuer']),
             tls_subject=dict(type='str', required=False, default=None),
             tls_psk_identity=dict(type='str', required=False, default=None),
             tls_psk=dict(type='str', required=False, default=None),
@@ -274,7 +275,7 @@ def main():
     status = module.params['status']
     tls_connect = module.params['tls_connect']
     tls_accept = module.params['tls_accept']
-    tls_issuer = module.params['tls_issuer']
+    tls_issuer = module.params['ca_cert']
     tls_subject = module.params['tls_subject']
     tls_psk_identity = module.params['tls_psk_identity']
     tls_psk = module.params['tls_psk']

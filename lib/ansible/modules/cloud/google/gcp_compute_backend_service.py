@@ -18,15 +18,14 @@
 # ----------------------------------------------------------------------------
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
 ################################################################################
 # Documentation
 ################################################################################
 
-ANSIBLE_METADATA = {'metadata_version': '1.1',
-                    'status': ["preview"],
-                    'supported_by': 'community'}
+ANSIBLE_METADATA = {'metadata_version': '1.1', 'status': ["preview"], 'supported_by': 'community'}
 
 DOCUMENTATION = '''
 ---
@@ -68,6 +67,7 @@ options:
           Valid values are UTILIZATION, RATE (for HTTP(S)) and CONNECTION (for TCP/SSL).
         - This cannot be used for internal load balancing.
         required: false
+        default: UTILIZATION
         choices:
         - UTILIZATION
         - RATE
@@ -82,6 +82,7 @@ options:
           [0.0,1.0].
         - This cannot be used for internal load balancing.
         required: false
+        default: '1.0'
       description:
         description:
         - An optional description of this resource.
@@ -89,18 +90,21 @@ options:
         required: false
       group:
         description:
-        - This instance group defines the list of instances that serve traffic. Member
-          virtual machine instances from each instance group must live in the same
-          zone as the instance group itself.
-        - No two backends in a backend service are allowed to use same Instance Group
-          resource.
+        - The fully-qualified URL of an Instance Group or Network Endpoint Group resource.
+          In case of instance group this defines the list of instances that serve
+          traffic. Member virtual machine instances from each instance group must
+          live in the same zone as the instance group itself. No two backends in a
+          backend service are allowed to use same Instance Group resource.
+        - For Network Endpoint Groups this defines list of endpoints. All endpoints
+          of Network Endpoint Group must be hosted on instances located in the same
+          zone as the Network Endpoint Group.
+        - Backend service can not contain mix of Instance Group and Network Endpoint
+          Group backends.
+        - Note that you must specify an Instance Group or Network Endpoint Group resource
+          using the fully-qualified URL, rather than a partial URL.
         - When the BackendService has load balancing scheme INTERNAL, the instance
-          group must be in a zone within the same region as the BackendService.
-        - 'This field represents a link to a InstanceGroup resource in GCP. It can
-          be specified in two ways. You can add `register: name-of-resource` to a
-          gcp_compute_instance_group task and then set this group field to "{{ name-of-resource
-          }}" Alternatively, you can set this group to a dictionary with the selfLink
-          key where the value is the selfLink of your InstanceGroup'
+          group must be within the same region as the BackendService. Network Endpoint
+          Groups are not supported for INTERNAL load balancing scheme.
         required: false
       max_connections:
         description:
@@ -141,6 +145,7 @@ options:
           target for the group. The default is 0.8. Valid range is [0.0, 1.0].
         - This cannot be used for internal load balancing.
         required: false
+        default: '0.8'
   cdn_policy:
     description:
     - Cloud CDN configuration for this BackendService.
@@ -183,9 +188,21 @@ options:
               or query_string_blacklist, not both.
             - "'&' and '=' will be percent encoded and not treated as delimiters."
             required: false
+      signed_url_cache_max_age_sec:
+        description:
+        - Maximum number of seconds the response to a signed URL request will be considered
+          fresh, defaults to 1hr (3600s). After this time period, the response will
+          be revalidated before being served.
+        - 'When serving responses to signed URL requests, Cloud CDN will internally
+          behave as though all responses from this backend had a "Cache-Control: public,
+          max-age=[TTL]" header, regardless of any existing Cache-Control header.
+          The actual headers served in responses will not be altered.'
+        required: false
+        default: '3600'
+        version_added: 2.8
   connection_draining:
     description:
-    - Settings for connection draining.
+    - Settings for connection draining .
     required: false
     suboptions:
       draining_timeout_sec:
@@ -193,6 +210,7 @@ options:
         - Time for which instance will be drained (not accept new connections, but
           still work to finish started).
         required: false
+        default: '300'
   description:
     description:
     - An optional description of this resource.
@@ -210,7 +228,7 @@ options:
       and a health check is required.
     - For internal load balancing, a URL to a HealthCheck resource must be specified
       instead.
-    required: false
+    required: true
   iap:
     description:
     - Settings for enabling Cloud Identity Aware Proxy.
@@ -224,22 +242,19 @@ options:
         type: bool
       oauth2_client_id:
         description:
-        - OAuth2 Client ID for IAP.
-        required: false
+        - OAuth2 Client ID for IAP .
+        required: true
       oauth2_client_secret:
         description:
-        - OAuth2 Client Secret for IAP.
-        required: false
-      oauth2_client_secret_sha256:
-        description:
-        - OAuth2 Client Secret SHA-256 for IAP.
-        required: false
+        - OAuth2 Client Secret for IAP .
+        required: true
   load_balancing_scheme:
     description:
     - Indicates whether the backend service will be used with internal or external
       load balancing. A backend service created for one type of load balancing cannot
-      be used with the other.
+      be used with the other. One of `INTERNAL` or `EXTERNAL`. Defaults to `EXTERNAL`.
     required: false
+    default: EXTERNAL
     version_added: 2.7
     choices:
     - INTERNAL
@@ -252,7 +267,7 @@ options:
       which means the first character must be a lowercase letter, and all following
       characters must be a dash, lowercase letter, or digit, except the last character,
       which cannot be a dash.
-    required: false
+    required: true
   port_name:
     description:
     - Name of backend port. The same name should appear in the instance groups referenced
@@ -271,11 +286,11 @@ options:
     - HTTPS
     - TCP
     - SSL
-  region:
+  security_policy:
     description:
-    - The region where the regional backend service resides.
-    - This field is not applicable to global backend services.
+    - The security policy associated with this backend service.
     required: false
+    version_added: 2.8
   session_affinity:
     description:
     - Type of session affinity to use. The default is NONE.
@@ -303,39 +318,39 @@ extends_documentation_fragment: gcp
 EXAMPLES = '''
 - name: create a instance group
   gcp_compute_instance_group:
-      name: "instancegroup-backendservice"
-      zone: us-central1-a
-      project: "{{ gcp_project }}"
-      auth_kind: "{{ gcp_cred_kind }}"
-      service_account_file: "{{ gcp_cred_file }}"
-      state: present
+    name: instancegroup-backendservice
+    zone: us-central1-a
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_cred_kind }}"
+    service_account_file: "{{ gcp_cred_file }}"
+    state: present
   register: instancegroup
 
 - name: create a http health check
   gcp_compute_http_health_check:
-      name: "httphealthcheck-backendservice"
-      healthy_threshold: 10
-      port: 8080
-      timeout_sec: 2
-      unhealthy_threshold: 5
-      project: "{{ gcp_project }}"
-      auth_kind: "{{ gcp_cred_kind }}"
-      service_account_file: "{{ gcp_cred_file }}"
-      state: present
+    name: httphealthcheck-backendservice
+    healthy_threshold: 10
+    port: 8080
+    timeout_sec: 2
+    unhealthy_threshold: 5
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_cred_kind }}"
+    service_account_file: "{{ gcp_cred_file }}"
+    state: present
   register: healthcheck
 
 - name: create a backend service
   gcp_compute_backend_service:
-      name: "test_object"
-      backends:
-      - group: "{{ instancegroup }}"
-      health_checks:
-      - "{{ healthcheck.selfLink }}"
-      enable_cdn: true
-      project: "test_project"
-      auth_kind: "serviceaccount"
-      service_account_file: "/tmp/auth.pem"
-      state: present
+    name: test_object
+    backends:
+    - group: "{{ instancegroup }}"
+    health_checks:
+    - "{{ healthcheck.selfLink }}"
+    enable_cdn: 'true'
+    project: test_project
+    auth_kind: serviceaccount
+    service_account_file: "/tmp/auth.pem"
+    state: present
 '''
 
 RETURN = '''
@@ -379,15 +394,23 @@ backends:
       type: str
     group:
       description:
-      - This instance group defines the list of instances that serve traffic. Member
-        virtual machine instances from each instance group must live in the same zone
-        as the instance group itself.
-      - No two backends in a backend service are allowed to use same Instance Group
-        resource.
+      - The fully-qualified URL of an Instance Group or Network Endpoint Group resource.
+        In case of instance group this defines the list of instances that serve traffic.
+        Member virtual machine instances from each instance group must live in the
+        same zone as the instance group itself. No two backends in a backend service
+        are allowed to use same Instance Group resource.
+      - For Network Endpoint Groups this defines list of endpoints. All endpoints
+        of Network Endpoint Group must be hosted on instances located in the same
+        zone as the Network Endpoint Group.
+      - Backend service can not contain mix of Instance Group and Network Endpoint
+        Group backends.
+      - Note that you must specify an Instance Group or Network Endpoint Group resource
+        using the fully-qualified URL, rather than a partial URL.
       - When the BackendService has load balancing scheme INTERNAL, the instance group
-        must be in a zone within the same region as the BackendService.
+        must be within the same region as the BackendService. Network Endpoint Groups
+        are not supported for INTERNAL load balancing scheme.
       returned: success
-      type: dict
+      type: str
     maxConnections:
       description:
       - The max number of simultaneous connections for the group. Can be used with
@@ -478,9 +501,20 @@ cdnPolicy:
           - "'&' and '=' will be percent encoded and not treated as delimiters."
           returned: success
           type: list
+    signedUrlCacheMaxAgeSec:
+      description:
+      - Maximum number of seconds the response to a signed URL request will be considered
+        fresh, defaults to 1hr (3600s). After this time period, the response will
+        be revalidated before being served.
+      - 'When serving responses to signed URL requests, Cloud CDN will internally
+        behave as though all responses from this backend had a "Cache-Control: public,
+        max-age=[TTL]" header, regardless of any existing Cache-Control header. The
+        actual headers served in responses will not be altered.'
+      returned: success
+      type: int
 connectionDraining:
   description:
-  - Settings for connection draining.
+  - Settings for connection draining .
   returned: success
   type: complex
   contains:
@@ -493,6 +527,12 @@ connectionDraining:
 creationTimestamp:
   description:
   - Creation timestamp in RFC3339 text format.
+  returned: success
+  type: str
+fingerprint:
+  description:
+  - Fingerprint of this resource. A hash of the contents stored in this object. This
+    field is used in optimistic locking.
   returned: success
   type: str
 description:
@@ -533,24 +573,24 @@ iap:
       type: bool
     oauth2ClientId:
       description:
-      - OAuth2 Client ID for IAP.
+      - OAuth2 Client ID for IAP .
       returned: success
       type: str
     oauth2ClientSecret:
       description:
-      - OAuth2 Client Secret for IAP.
+      - OAuth2 Client Secret for IAP .
       returned: success
       type: str
     oauth2ClientSecretSha256:
       description:
-      - OAuth2 Client Secret SHA-256 for IAP.
+      - OAuth2 Client Secret SHA-256 for IAP .
       returned: success
       type: str
 loadBalancingScheme:
   description:
   - Indicates whether the backend service will be used with internal or external load
     balancing. A backend service created for one type of load balancing cannot be
-    used with the other.
+    used with the other. One of `INTERNAL` or `EXTERNAL`. Defaults to `EXTERNAL`.
   returned: success
   type: str
 name:
@@ -578,10 +618,9 @@ protocol:
     is TCP.
   returned: success
   type: str
-region:
+securityPolicy:
   description:
-  - The region where the regional backend service resides.
-  - This field is not applicable to global backend services.
+  - The security policy associated with this backend service.
   returned: success
   type: str
 sessionAffinity:
@@ -607,7 +646,6 @@ timeoutSec:
 
 from ansible.module_utils.gcp_utils import navigate_hash, GcpSession, GcpModule, GcpRequest, remove_nones_from_dict, replace_resource_dict
 import json
-import re
 import time
 
 ################################################################################
@@ -622,45 +660,52 @@ def main():
         argument_spec=dict(
             state=dict(default='present', choices=['present', 'absent'], type='str'),
             affinity_cookie_ttl_sec=dict(type='int'),
-            backends=dict(type='list', elements='dict', options=dict(
-                balancing_mode=dict(type='str', choices=['UTILIZATION', 'RATE', 'CONNECTION']),
-                capacity_scaler=dict(type='str'),
-                description=dict(type='str'),
-                group=dict(type='dict'),
-                max_connections=dict(type='int'),
-                max_connections_per_instance=dict(type='int'),
-                max_rate=dict(type='int'),
-                max_rate_per_instance=dict(type='str'),
-                max_utilization=dict(type='str')
-            )),
-            cdn_policy=dict(type='dict', options=dict(
-                cache_key_policy=dict(type='dict', options=dict(
-                    include_host=dict(type='bool'),
-                    include_protocol=dict(type='bool'),
-                    include_query_string=dict(type='bool'),
-                    query_string_blacklist=dict(type='list', elements='str'),
-                    query_string_whitelist=dict(type='list', elements='str')
-                ))
-            )),
-            connection_draining=dict(type='dict', options=dict(
-                draining_timeout_sec=dict(type='int')
-            )),
+            backends=dict(
+                type='list',
+                elements='dict',
+                options=dict(
+                    balancing_mode=dict(default='UTILIZATION', type='str', choices=['UTILIZATION', 'RATE', 'CONNECTION']),
+                    capacity_scaler=dict(default=1.0, type='str'),
+                    description=dict(type='str'),
+                    group=dict(type='str'),
+                    max_connections=dict(type='int'),
+                    max_connections_per_instance=dict(type='int'),
+                    max_rate=dict(type='int'),
+                    max_rate_per_instance=dict(type='str'),
+                    max_utilization=dict(default=0.8, type='str'),
+                ),
+            ),
+            cdn_policy=dict(
+                type='dict',
+                options=dict(
+                    cache_key_policy=dict(
+                        type='dict',
+                        options=dict(
+                            include_host=dict(type='bool'),
+                            include_protocol=dict(type='bool'),
+                            include_query_string=dict(type='bool'),
+                            query_string_blacklist=dict(type='list', elements='str'),
+                            query_string_whitelist=dict(type='list', elements='str'),
+                        ),
+                    ),
+                    signed_url_cache_max_age_sec=dict(default=3600, type='int'),
+                ),
+            ),
+            connection_draining=dict(type='dict', options=dict(draining_timeout_sec=dict(default=300, type='int'))),
             description=dict(type='str'),
             enable_cdn=dict(type='bool'),
-            health_checks=dict(type='list', elements='str'),
-            iap=dict(type='dict', options=dict(
-                enabled=dict(type='bool'),
-                oauth2_client_id=dict(type='str'),
-                oauth2_client_secret=dict(type='str'),
-                oauth2_client_secret_sha256=dict(type='str')
-            )),
-            load_balancing_scheme=dict(type='str', choices=['INTERNAL', 'EXTERNAL']),
-            name=dict(type='str'),
+            health_checks=dict(required=True, type='list', elements='str'),
+            iap=dict(
+                type='dict',
+                options=dict(enabled=dict(type='bool'), oauth2_client_id=dict(required=True, type='str'), oauth2_client_secret=dict(required=True, type='str')),
+            ),
+            load_balancing_scheme=dict(default='EXTERNAL', type='str', choices=['INTERNAL', 'EXTERNAL']),
+            name=dict(required=True, type='str'),
             port_name=dict(type='str'),
             protocol=dict(type='str', choices=['HTTP', 'HTTPS', 'TCP', 'SSL']),
-            region=dict(type='str'),
+            security_policy=dict(type='str'),
             session_affinity=dict(type='str', choices=['NONE', 'CLIENT_IP', 'GENERATED_COOKIE', 'CLIENT_IP_PROTO', 'CLIENT_IP_PORT_PROTO']),
-            timeout_sec=dict(type='int', aliases=['timeout_seconds'])
+            timeout_sec=dict(type='int', aliases=['timeout_seconds']),
         )
     )
 
@@ -676,7 +721,7 @@ def main():
     if fetch:
         if state == 'present':
             if is_different(module, fetch):
-                update(module, self_link(module), kind)
+                update(module, self_link(module), kind, fetch)
                 fetch = fetch_resource(module, self_link(module), kind)
                 changed = True
         else:
@@ -700,9 +745,23 @@ def create(module, link, kind):
     return wait_for_operation(module, auth.post(link, resource_to_request(module)))
 
 
-def update(module, link, kind):
+def update(module, link, kind, fetch):
+    update_fields(module, resource_to_request(module), response_to_hash(module, fetch))
     auth = GcpSession(module, 'compute')
     return wait_for_operation(module, auth.put(link, resource_to_request(module)))
+
+
+def update_fields(module, request, response):
+    if response.get('securityPolicy') != request.get('securityPolicy'):
+        security_policy_update(module, request, response)
+
+
+def security_policy_update(module, request, response):
+    auth = GcpSession(module, 'compute')
+    auth.post(
+        ''.join(["https://www.googleapis.com/compute/v1/", "projects/{project}/global/backendServices/{name}/setSecurityPolicy"]).format(**module.params),
+        {u'securityPolicy': module.params.get('security_policy')},
+    )
 
 
 def delete(module, link, kind):
@@ -725,13 +784,13 @@ def resource_to_request(module):
         u'name': module.params.get('name'),
         u'portName': module.params.get('port_name'),
         u'protocol': module.params.get('protocol'),
-        u'region': region_selflink(module.params.get('region'), module.params),
+        u'securityPolicy': module.params.get('security_policy'),
         u'sessionAffinity': module.params.get('session_affinity'),
-        u'timeoutSec': module.params.get('timeout_sec')
+        u'timeoutSec': module.params.get('timeout_sec'),
     }
     return_vals = {}
     for k, v in request.items():
-        if v:
+        if v or v is False:
             return_vals[k] = v
 
     return return_vals
@@ -762,8 +821,8 @@ def return_if_object(module, response, kind, allow_not_found=False):
     try:
         module.raise_for_status(response)
         result = response.json()
-    except getattr(json.decoder, 'JSONDecodeError', ValueError) as inst:
-        module.fail_json(msg="Invalid JSON response with error: %s" % inst)
+    except getattr(json.decoder, 'JSONDecodeError', ValueError):
+        module.fail_json(msg="Invalid JSON response with error: %s" % response.text)
 
     if navigate_hash(result, ['error', 'errors']):
         module.fail_json(msg=navigate_hash(result, ['error', 'errors']))
@@ -798,28 +857,20 @@ def response_to_hash(module, response):
         u'cdnPolicy': BackendServiceCdnpolicy(response.get(u'cdnPolicy', {}), module).from_response(),
         u'connectionDraining': BackendServiceConnectiondraining(response.get(u'connectionDraining', {}), module).from_response(),
         u'creationTimestamp': response.get(u'creationTimestamp'),
+        u'fingerprint': response.get(u'fingerprint'),
         u'description': response.get(u'description'),
         u'enableCDN': response.get(u'enableCDN'),
         u'healthChecks': response.get(u'healthChecks'),
         u'id': response.get(u'id'),
         u'iap': BackendServiceIap(response.get(u'iap', {}), module).from_response(),
         u'loadBalancingScheme': response.get(u'loadBalancingScheme'),
-        u'name': response.get(u'name'),
+        u'name': module.params.get('name'),
         u'portName': response.get(u'portName'),
         u'protocol': response.get(u'protocol'),
-        u'region': response.get(u'region'),
+        u'securityPolicy': response.get(u'securityPolicy'),
         u'sessionAffinity': response.get(u'sessionAffinity'),
-        u'timeoutSec': response.get(u'timeoutSec')
+        u'timeoutSec': response.get(u'timeoutSec'),
     }
-
-
-def region_selflink(name, params):
-    if name is None:
-        return
-    url = r"https://www.googleapis.com/compute/v1/projects/.*/regions/[a-z1-9\-]*"
-    if not re.match(url, name):
-        name = "https://www.googleapis.com/compute/v1/projects/{project}/regions/%s".format(**params) % name
-    return name
 
 
 def async_op_url(module, extra_data=None):
@@ -844,9 +895,9 @@ def wait_for_completion(status, op_result, module):
     op_id = navigate_hash(op_result, ['name'])
     op_uri = async_op_url(module, {'op_id': op_id})
     while status != 'DONE':
-        raise_if_errors(op_result, ['error', 'errors'], 'message')
+        raise_if_errors(op_result, ['error', 'errors'], module)
         time.sleep(1.0)
-        op_result = fetch_resource(module, op_uri, 'compute#operation')
+        op_result = fetch_resource(module, op_uri, 'compute#operation', False)
         status = navigate_hash(op_result, ['status'])
     return op_result
 
@@ -878,30 +929,34 @@ class BackendServiceBackendsArray(object):
         return items
 
     def _request_for_item(self, item):
-        return remove_nones_from_dict({
-            u'balancingMode': item.get('balancing_mode'),
-            u'capacityScaler': item.get('capacity_scaler'),
-            u'description': item.get('description'),
-            u'group': replace_resource_dict(item.get(u'group', {}), 'selfLink'),
-            u'maxConnections': item.get('max_connections'),
-            u'maxConnectionsPerInstance': item.get('max_connections_per_instance'),
-            u'maxRate': item.get('max_rate'),
-            u'maxRatePerInstance': item.get('max_rate_per_instance'),
-            u'maxUtilization': item.get('max_utilization')
-        })
+        return remove_nones_from_dict(
+            {
+                u'balancingMode': item.get('balancing_mode'),
+                u'capacityScaler': item.get('capacity_scaler'),
+                u'description': item.get('description'),
+                u'group': item.get('group'),
+                u'maxConnections': item.get('max_connections'),
+                u'maxConnectionsPerInstance': item.get('max_connections_per_instance'),
+                u'maxRate': item.get('max_rate'),
+                u'maxRatePerInstance': item.get('max_rate_per_instance'),
+                u'maxUtilization': item.get('max_utilization'),
+            }
+        )
 
     def _response_from_item(self, item):
-        return remove_nones_from_dict({
-            u'balancingMode': item.get(u'balancingMode'),
-            u'capacityScaler': item.get(u'capacityScaler'),
-            u'description': item.get(u'description'),
-            u'group': item.get(u'group'),
-            u'maxConnections': item.get(u'maxConnections'),
-            u'maxConnectionsPerInstance': item.get(u'maxConnectionsPerInstance'),
-            u'maxRate': item.get(u'maxRate'),
-            u'maxRatePerInstance': item.get(u'maxRatePerInstance'),
-            u'maxUtilization': item.get(u'maxUtilization')
-        })
+        return remove_nones_from_dict(
+            {
+                u'balancingMode': item.get(u'balancingMode'),
+                u'capacityScaler': item.get(u'capacityScaler'),
+                u'description': item.get(u'description'),
+                u'group': item.get(u'group'),
+                u'maxConnections': item.get(u'maxConnections'),
+                u'maxConnectionsPerInstance': item.get(u'maxConnectionsPerInstance'),
+                u'maxRate': item.get(u'maxRate'),
+                u'maxRatePerInstance': item.get(u'maxRatePerInstance'),
+                u'maxUtilization': item.get(u'maxUtilization'),
+            }
+        )
 
 
 class BackendServiceCdnpolicy(object):
@@ -913,14 +968,20 @@ class BackendServiceCdnpolicy(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({
-            u'cacheKeyPolicy': BackendServiceCachekeypolicy(self.request.get('cache_key_policy', {}), self.module).to_request()
-        })
+        return remove_nones_from_dict(
+            {
+                u'cacheKeyPolicy': BackendServiceCachekeypolicy(self.request.get('cache_key_policy', {}), self.module).to_request(),
+                u'signedUrlCacheMaxAgeSec': self.request.get('signed_url_cache_max_age_sec'),
+            }
+        )
 
     def from_response(self):
-        return remove_nones_from_dict({
-            u'cacheKeyPolicy': BackendServiceCachekeypolicy(self.request.get(u'cacheKeyPolicy', {}), self.module).from_response()
-        })
+        return remove_nones_from_dict(
+            {
+                u'cacheKeyPolicy': BackendServiceCachekeypolicy(self.request.get(u'cacheKeyPolicy', {}), self.module).from_response(),
+                u'signedUrlCacheMaxAgeSec': self.request.get(u'signedUrlCacheMaxAgeSec'),
+            }
+        )
 
 
 class BackendServiceCachekeypolicy(object):
@@ -932,22 +993,26 @@ class BackendServiceCachekeypolicy(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({
-            u'includeHost': self.request.get('include_host'),
-            u'includeProtocol': self.request.get('include_protocol'),
-            u'includeQueryString': self.request.get('include_query_string'),
-            u'queryStringBlacklist': self.request.get('query_string_blacklist'),
-            u'queryStringWhitelist': self.request.get('query_string_whitelist')
-        })
+        return remove_nones_from_dict(
+            {
+                u'includeHost': self.request.get('include_host'),
+                u'includeProtocol': self.request.get('include_protocol'),
+                u'includeQueryString': self.request.get('include_query_string'),
+                u'queryStringBlacklist': self.request.get('query_string_blacklist'),
+                u'queryStringWhitelist': self.request.get('query_string_whitelist'),
+            }
+        )
 
     def from_response(self):
-        return remove_nones_from_dict({
-            u'includeHost': self.request.get(u'includeHost'),
-            u'includeProtocol': self.request.get(u'includeProtocol'),
-            u'includeQueryString': self.request.get(u'includeQueryString'),
-            u'queryStringBlacklist': self.request.get(u'queryStringBlacklist'),
-            u'queryStringWhitelist': self.request.get(u'queryStringWhitelist')
-        })
+        return remove_nones_from_dict(
+            {
+                u'includeHost': self.request.get(u'includeHost'),
+                u'includeProtocol': self.request.get(u'includeProtocol'),
+                u'includeQueryString': self.request.get(u'includeQueryString'),
+                u'queryStringBlacklist': self.request.get(u'queryStringBlacklist'),
+                u'queryStringWhitelist': self.request.get(u'queryStringWhitelist'),
+            }
+        )
 
 
 class BackendServiceConnectiondraining(object):
@@ -959,14 +1024,10 @@ class BackendServiceConnectiondraining(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({
-            u'drainingTimeoutSec': self.request.get('draining_timeout_sec')
-        })
+        return remove_nones_from_dict({u'drainingTimeoutSec': self.request.get('draining_timeout_sec')})
 
     def from_response(self):
-        return remove_nones_from_dict({
-            u'drainingTimeoutSec': self.request.get(u'drainingTimeoutSec')
-        })
+        return remove_nones_from_dict({u'drainingTimeoutSec': self.request.get(u'drainingTimeoutSec')})
 
 
 class BackendServiceIap(object):
@@ -978,20 +1039,22 @@ class BackendServiceIap(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({
-            u'enabled': self.request.get('enabled'),
-            u'oauth2ClientId': self.request.get('oauth2_client_id'),
-            u'oauth2ClientSecret': self.request.get('oauth2_client_secret'),
-            u'oauth2ClientSecretSha256': self.request.get('oauth2_client_secret_sha256')
-        })
+        return remove_nones_from_dict(
+            {
+                u'enabled': self.request.get('enabled'),
+                u'oauth2ClientId': self.request.get('oauth2_client_id'),
+                u'oauth2ClientSecret': self.request.get('oauth2_client_secret'),
+            }
+        )
 
     def from_response(self):
-        return remove_nones_from_dict({
-            u'enabled': self.request.get(u'enabled'),
-            u'oauth2ClientId': self.request.get(u'oauth2ClientId'),
-            u'oauth2ClientSecret': self.request.get(u'oauth2ClientSecret'),
-            u'oauth2ClientSecretSha256': self.request.get(u'oauth2ClientSecretSha256')
-        })
+        return remove_nones_from_dict(
+            {
+                u'enabled': self.request.get(u'enabled'),
+                u'oauth2ClientId': self.request.get(u'oauth2ClientId'),
+                u'oauth2ClientSecret': self.request.get(u'oauth2ClientSecret'),
+            }
+        )
 
 
 if __name__ == '__main__':

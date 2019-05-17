@@ -86,6 +86,7 @@ packaging/release/ansible_release
 /test/results/junit/*.xml
 /test/results/logs/*.log
 /test/results/data/*.json
+/test/integration/cloud-config-aws.yml
 /test/integration/inventory.remote
 /test/integration/inventory.networking
 /test/integration/inventory.winrm
@@ -105,3 +106,4 @@ test/units/.coverage.*
 /SYMLINK_CACHE.json
 changelogs/.plugin-cache.yaml
 sync-repo.log
+.ansible-test-timeout.json

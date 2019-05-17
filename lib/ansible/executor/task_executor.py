@@ -17,11 +17,14 @@ import traceback
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip
 from ansible.executor.task_result import TaskResult
+from ansible.executor.module_common import get_action_args_with_defaults
 from ansible.module_utils.six import iteritems, string_types, binary_type
+from ansible.module_utils.six.moves import xrange
 from ansible.module_utils._text import to_text, to_native
 from ansible.module_utils.connection import write_to_file_descriptor
 from ansible.playbook.conditional import Conditional
 from ansible.playbook.task import Task
+from ansible.plugins.loader import become_loader
 from ansible.template import Templar
 from ansible.utils.listify import listify_lookup_plugin_terms
 from ansible.utils.unsafe_proxy import UnsafeProxy, wrap_var
@@ -297,7 +300,7 @@ class TaskExecutor:
             loop_pause = templar.template(self._task.loop_control.pause)
             extended = templar.template(self._task.loop_control.extended)
 
-            # This may be 'None',so it is tempalted below after we ensure a value and an item is assigned
+            # This may be 'None',so it is templated below after we ensure a value and an item is assigned
             label = self._task.loop_control.label
 
         # ensure we always have a label
@@ -317,6 +320,8 @@ class TaskExecutor:
         no_log = False
         items_len = len(items)
         for item_index, item in enumerate(items):
+            task_vars['ansible_loop_var'] = loop_var
+
             task_vars[loop_var] = item
             if index_var:
                 task_vars[index_var] = item_index
@@ -374,6 +379,7 @@ class TaskExecutor:
             # now update the result with the item info, and append the result
             # to the list of results
             res[loop_var] = item
+            res['ansible_loop_var'] = loop_var
             if index_var:
                 res[index_var] = item_index
             if extended:
@@ -554,18 +560,18 @@ class TaskExecutor:
         # if this task is a TaskInclude, we just return now with a success code so the
         # main thread can expand the task list for the given host
         if self._task.action in ('include', 'include_tasks'):
-            include_variables = self._task.args.copy()
-            include_file = include_variables.pop('_raw_params', None)
+            include_args = self._task.args.copy()
+            include_file = include_args.pop('_raw_params', None)
             if not include_file:
                 return dict(failed=True, msg="No include file was specified to the include")
 
             include_file = templar.template(include_file)
-            return dict(include=include_file, include_variables=include_variables)
+            return dict(include=include_file, include_args=include_args)
 
         # if this task is a IncludeRole, we just return now with a success code so the main thread can expand the task list for the given host
         elif self._task.action == 'include_role':
-            include_variables = self._task.args.copy()
-            return dict(include_variables=include_variables)
+            include_args = self._task.args.copy()
+            return dict(include_args=include_args)
 
         # Now we do final validation on the task, which sets all fields to their final values.
         self._task.post_validate(templar=templar)
@@ -589,27 +595,12 @@ class TaskExecutor:
             self._connection._play_context = self._play_context
 
         self._set_connection_options(variables, templar)
-        self._set_shell_options(variables, templar)
 
         # get handler
         self._handler = self._get_action_handler(connection=self._connection, templar=templar)
 
         # Apply default params for action/module, if present
-        # These are collected as a list of dicts, so we need to merge them
-        module_defaults = {}
-        for default in self._task.module_defaults:
-            module_defaults.update(default)
-        if module_defaults:
-            module_defaults = templar.template(module_defaults)
-        if self._task.action in module_defaults:
-            tmp_args = module_defaults[self._task.action].copy()
-            tmp_args.update(self._task.args)
-            self._task.args = tmp_args
-        if self._task.action in C.config.module_defaults_groups:
-            for group in C.config.module_defaults_groups.get(self._task.action, []):
-                tmp_args = (module_defaults.get('group/{0}'.format(group)) or {}).copy()
-                tmp_args.update(self._task.args)
-                self._task.args = tmp_args
+        self._task.args = get_action_args_with_defaults(self._task.action, self._task.args, self._task.module_defaults, templar)
 
         # And filter out any fields which were set to default(omit), and got the omit token value
         omit_token = variables.get('omit')
@@ -638,7 +629,7 @@ class TaskExecutor:
 
         display.debug("starting attempt loop")
         result = None
-        for attempt in range(1, retries + 1):
+        for attempt in xrange(1, retries + 1):
             display.debug("running the handler")
             try:
                 result = self._handler.run(task_vars=variables)
@@ -688,9 +679,10 @@ class TaskExecutor:
                     vars_copy.update(result['ansible_facts'])
                 else:
                     # TODO: cleaning of facts should eventually become part of taskresults instead of vars
-                    vars_copy.update(namespace_facts(result['ansible_facts']))
+                    af = wrap_var(result['ansible_facts'])
+                    vars_copy.update(namespace_facts(af))
                     if C.INJECT_FACTS_AS_VARS:
-                        vars_copy.update(clean_facts(result['ansible_facts']))
+                        vars_copy.update(clean_facts(af))
 
             # set the failed property if it was missing.
             if 'failed' not in result:
@@ -750,9 +742,10 @@ class TaskExecutor:
                 variables.update(result['ansible_facts'])
             else:
                 # TODO: cleaning of facts should eventually become part of taskresults instead of vars
-                variables.update(namespace_facts(result['ansible_facts']))
+                af = wrap_var(result['ansible_facts'])
+                variables.update(namespace_facts(af))
                 if C.INJECT_FACTS_AS_VARS:
-                    variables.update(clean_facts(result['ansible_facts']))
+                    variables.update(clean_facts(af))
 
         # save the notification target in the result, if it was specified, as
         # this task may be running in a loop in which case the notification
@@ -848,6 +841,13 @@ class TaskExecutor:
         else:
             return async_result
 
+    def _get_become(self, name):
+        become = become_loader.get(name)
+        if not become:
+            raise AnsibleError("Invalid become method specified, could not find matching plugin: '%s'. "
+                               "Use `ansible-doc -t become -l` to list available plugins." % name)
+        return become
+
     def _get_connection(self, variables, templar):
         '''
         Reads the connection property for the host, and returns the
@@ -868,8 +868,8 @@ class TaskExecutor:
                     if isinstance(i, string_types) and i.startswith("ansible_") and i.endswith("_interpreter"):
                         variables[i] = delegated_vars[i]
 
+        # load connection
         conn_type = self._play_context.connection
-
         connection = self._shared_loader_obj.connection_loader.get(
             conn_type,
             self._play_context,
@@ -881,8 +881,30 @@ class TaskExecutor:
         if not connection:
             raise AnsibleError("the connection plugin '%s' was not found" % conn_type)
 
+        # load become plugin if needed
+        become_plugin = None
+        if self._play_context.become:
+            become_plugin = self._get_become(self._play_context.become_method)
+
+        if getattr(become_plugin, 'require_tty', False) and not getattr(connection, 'has_tty', False):
+            raise AnsibleError(
+                "The '%s' connection does not provide a tty which is requied for the selected "
+                "become plugin: %s." % (conn_type, become_plugin.name)
+            )
+
+        try:
+            connection.set_become_plugin(become_plugin)
+        except AttributeError:
+            # Connection plugin does not support set_become_plugin
+            pass
+
+        # Backwards compat for connection plugins that don't support become plugins
+        # Just do this unconditionally for now, we could move it inside of the
+        # AttributeError above later
+        self._play_context.set_become_plugin(become_plugin)
+
         # FIXME: remove once all plugins pull all data from self._options
-        self._play_context.set_options_from_plugin(connection)
+        self._play_context.set_attributes_from_plugin(connection)
 
         if any(((connection.supports_persistence and C.USE_PERSISTENT_CONNECTIONS), connection.force_persistence)):
             self._play_context.timeout = connection.get_option('persistent_command_timeout')
@@ -911,13 +933,30 @@ class TaskExecutor:
 
         return options
 
+    def _set_plugin_options(self, plugin_type, variables, templar, task_keys):
+        try:
+            plugin = getattr(self._connection, '_%s' % plugin_type)
+        except AttributeError:
+            # Some plugins are assigned to private attrs, ``become`` is not
+            plugin = getattr(self._connection, plugin_type)
+        option_vars = C.config.get_plugin_vars(plugin_type, plugin._load_name)
+        options = {}
+        for k in option_vars:
+            if k in variables:
+                options[k] = templar.template(variables[k])
+        # TODO move to task method?
+        plugin.set_options(task_keys=task_keys, var_options=options)
+
     def _set_connection_options(self, variables, templar):
 
         # Keep the pre-delegate values for these keys
         PRESERVE_ORIG = ('inventory_hostname',)
 
         # create copy with delegation built in
-        final_vars = combine_vars(variables, variables.get('ansible_delegated_vars', dict()).get(self._task.delegate_to, dict()))
+        final_vars = combine_vars(
+            variables,
+            variables.get('ansible_delegated_vars', {}).get(self._task.delegate_to, {})
+        )
 
         # grab list of usable vars for this plugin
         option_vars = C.config.get_plugin_vars('connection', self._connection._load_name)
@@ -936,17 +975,25 @@ class TaskExecutor:
                 if k.startswith('ansible_%s_' % self._connection._load_name) and k not in options:
                     options['_extras'][k] = templar.template(final_vars[k])
 
-        # set options with 'templated vars' specific to this plugin
-        self._connection.set_options(var_options=options)
-        self._set_shell_options(final_vars, templar)
+        task_keys = self._task.dump_attrs()
 
-    def _set_shell_options(self, variables, templar):
-        option_vars = C.config.get_plugin_vars('shell', self._connection._shell._load_name)
-        options = {}
-        for k in option_vars:
-            if k in variables:
-                options[k] = templar.template(variables[k])
-        self._connection._shell.set_options(var_options=options)
+        # set options with 'templated vars' specific to this plugin and dependant ones
+        self._connection.set_options(task_keys=task_keys, var_options=options)
+        self._set_plugin_options('shell', final_vars, templar, task_keys)
+
+        if self._connection.become is not None:
+            # FIXME: find alternate route to provide passwords,
+            # keep out of play objects to avoid accidental disclosure
+            task_keys['become_pass'] = self._play_context.become_pass
+            self._set_plugin_options('become', final_vars, templar, task_keys)
+
+            # FOR BACKWARDS COMPAT:
+            for option in ('become_user', 'become_flags', 'become_exe'):
+                try:
+                    setattr(self._play_context, option, self._connection.become.get_option(option))
+                except KeyError:
+                    pass  # some plugins don't support all base flags
+            self._play_context.prompt = self._connection.become.prompt
 
     def _get_action_handler(self, connection, templar):
         '''
@@ -955,13 +1002,18 @@ class TaskExecutor:
 
         module_prefix = self._task.action.split('_')[0]
 
+        collections = self._task.collections
+
         # let action plugin override module, fallback to 'normal' action plugin otherwise
-        if self._task.action in self._shared_loader_obj.action_loader:
+        if self._shared_loader_obj.action_loader.has_plugin(self._task.action, collection_list=collections):
             handler_name = self._task.action
+        # FIXME: is this code path even live anymore? check w/ networking folks; it trips sometimes when it shouldn't
         elif all((module_prefix in C.NETWORK_GROUP_MODULES, module_prefix in self._shared_loader_obj.action_loader)):
             handler_name = module_prefix
         else:
+            # FUTURE: once we're comfortable with collections impl, preface this action with ansible.builtin so it can't be hijacked
             handler_name = 'normal'
+            collections = None  # until then, we don't want the task's collection list to be consulted; use the builtin
 
         handler = self._shared_loader_obj.action_loader.get(
             handler_name,
@@ -971,6 +1023,7 @@ class TaskExecutor:
             loader=self._loader,
             templar=templar,
             shared_loader_obj=self._shared_loader_obj,
+            collection_list=collections
         )
 
         if not handler:

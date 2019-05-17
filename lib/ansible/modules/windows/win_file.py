@@ -35,17 +35,14 @@ options:
       - If C(touch), an empty file will be created if the C(path) does not
         exist, while an existing file or directory will receive updated file access and
         modification times (similar to the way C(touch) works from the command line).
+    type: str
     choices: [ absent, directory, file, touch ]
-notes:
-    - For non-Windows targets, use the M(file) module instead.
 seealso:
-- module: assemble
-- module: copy
 - module: file
-- module: template
-- module: win_copy
+- module: win_acl
+- module: win_acl_inheritance
+- module: win_owner
 - module: win_stat
-- module: win_template
 author:
 - Jon Hawkesworth (@jhawkesworth)
 '''

@@ -24,10 +24,9 @@ class EnvironmentConfig(CommonConfig):
     def __init__(self, args, command):
         """
         :type args: any
+        :type command: str
         """
-        super(EnvironmentConfig, self).__init__(args)
-
-        self.command = command
+        super(EnvironmentConfig, self).__init__(args, command)
 
         self.local = args.local is True
 
@@ -69,6 +68,7 @@ class EnvironmentConfig(CommonConfig):
             self.python = None
 
         self.python_version = self.python or '.'.join(str(i) for i in sys.version_info[:2])
+        self.python_interpreter = args.python_interpreter
 
         self.delegate = self.tox or self.docker or self.remote
         self.delegate_args = []  # type: list[str]
@@ -105,6 +105,7 @@ class TestConfig(EnvironmentConfig):
 
         self.coverage = args.coverage  # type: bool
         self.coverage_label = args.coverage_label  # type: str
+        self.coverage_check = args.coverage_check  # type: bool
         self.include = args.include or []  # type: list [str]
         self.exclude = args.exclude or []  # type: list [str]
         self.require = args.require or []  # type: list [str]
@@ -124,6 +125,9 @@ class TestConfig(EnvironmentConfig):
 
         self.metadata = Metadata.from_file(args.metadata) if args.metadata else Metadata()
         self.metadata_path = None
+
+        if self.coverage_check:
+            self.coverage = True
 
 
 class ShellConfig(EnvironmentConfig):
@@ -190,6 +194,8 @@ class IntegrationConfig(TestConfig):
         self.tags = args.tags
         self.skip_tags = args.skip_tags
         self.diff = args.diff
+        self.no_temp_workdir = args.no_temp_workdir
+        self.no_temp_unicode = args.no_temp_unicode
 
         if self.list_targets:
             self.explain = True

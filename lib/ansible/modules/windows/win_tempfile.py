@@ -20,6 +20,7 @@ options:
   state:
     description:
       - Whether to create file or directory.
+    type: str
     choices: [ directory, file ]
     default: file
   path:
@@ -28,16 +29,17 @@ options:
       - If path is not specified default system temporary directory (%TEMP%) will be used.
     type: path
     default: '%TEMP%'
+    aliases: [ dest ]
   prefix:
     description:
       - Prefix of file/directory name created by module.
+    type: str
     default: ansible.
   suffix:
     description:
       - Suffix of file/directory name created by module.
+    type: str
     default: ''
-notes:
-  - For non-Windows targets, please use the M(tempfile) module instead.
 seealso:
 - module: tempfile
 author:
@@ -58,7 +60,7 @@ EXAMPLES = r"""
 
 RETURN = r'''
 path:
-  description: Path to created file or directory
+  description: The absolute path to the created file or directory.
   returned: success
   type: str
   sample: C:\Users\Administrator\AppData\Local\Temp\ansible.bMlvdk

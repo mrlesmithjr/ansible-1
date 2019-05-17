@@ -12,21 +12,22 @@ import copy
 from ansible import constants as C
 from ansible.module_utils._text import to_text
 from ansible.module_utils.connection import Connection
-from ansible.plugins.action.normal import ActionModule as _ActionModule
+from ansible.plugins.action.network import ActionModule as ActionNetworkModule
 from ansible.module_utils.network.cloudengine.ce import ce_provider_spec
 from ansible.module_utils.network.common.utils import load_provider
 from ansible.utils.display import Display
 
 display = Display()
 
-CLI_SUPPORTED_MODULES = ['ce_config', 'ce_command']
+CLI_SUPPORTED_MODULES = ['ce_config', 'ce_command', 'ce_facts']
 
 
-class ActionModule(_ActionModule):
+class ActionModule(ActionNetworkModule):
 
     def run(self, tmp=None, task_vars=None):
         del tmp  # tmp no longer has any effect
 
+        self._config_module = True if self._task.action == 'ce_config' else False
         socket_path = None
 
         if self._play_context.connection == 'local':
@@ -88,7 +89,7 @@ class ActionModule(_ActionModule):
             out = conn.get_prompt()
             while to_text(out, errors='surrogate_then_replace').strip().endswith(']'):
                 display.vvvv('wrong context, sending exit to device', self._play_context.remote_addr)
-                conn.send_command('exit')
+                conn.exec_command('return')
                 out = conn.get_prompt()
 
         result = super(ActionModule, self).run(task_vars=task_vars)

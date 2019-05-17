@@ -54,6 +54,12 @@ options:
             - Status of the action.
         choices: ['enabled', 'disabled']
         default: 'enabled'
+    pause_in_maintenance:
+        description:
+            - Whether to pause escalation during maintenance periods or not.
+            - Can be used when I(event_source=trigger).
+        type: 'bool'
+        default: true
     esc_period:
         description:
             - Default operation step duration. Must be greater than 60 seconds. Accepts seconds, time unit with suffix and user macro.
@@ -66,7 +72,7 @@ options:
               check out Zabbix API documentation U(https://www.zabbix.com/documentation/3.4/manual/api/reference/action/object#action_filter_condition)
         suboptions:
             type:
-                description: Type (label) of the condition
+                description: Type (label) of the condition.
                 choices:
                     # trigger
                     - host_group
@@ -105,18 +111,22 @@ options:
                 description:
                     - Value to compare with.
                     - When I(type) is set to C(discovery_status), the choices
-                      are C(up), C(down), C(discovered), C(lost)
+                      are C(up), C(down), C(discovered), C(lost).
                     - When I(type) is set to C(discovery_object), the choices
-                      are C(host), C(service)
+                      are C(host), C(service).
                     - When I(type) is set to C(event_type), the choices
                       are C(item in not supported state), C(item in normal state),
                       C(LLD rule in not supported state),
-                      C(LLD rule in normal state), C(trigger in unknown state), C(trigger in normal state)
+                      C(LLD rule in normal state), C(trigger in unknown state), C(trigger in normal state).
+                    - When I(type) is set to C(trigger_severity), the choices
+                      are (case-insensitive) C(not classified), C(information), C(warning), C(average), C(high), C(disaster)
+                      irrespective of user-visible names being changed in Zabbix. Defaults to C(not classified) if omitted.
                     - Besides the above options, this is usualy either the name
                       of the object or a string to compare with.
             operator:
                 description:
                     - Condition operator.
+                    - When I(type) is set to C(time_period), the choices are C(in), C(not in).
                 choices:
                     - '='
                     - '<>'
@@ -130,6 +140,18 @@ options:
                 description:
                     - Arbitrary unique ID that is used to reference the condition from a custom expression.
                     - Can only contain upper-case letters.
+                    - Required for custom expression filters.
+    eval_type:
+        description:
+            - Filter condition evaluation method.
+            - Defaults to C(andor) if conditions are less then 2 or if
+              I(formula) is not specified.
+            - Defaults to C(custom_expression) when formula is specified.
+        choices:
+            - 'andor'
+            - 'and'
+            - 'or'
+            - 'custom_expression'
     formula:
         description:
             - User-defined expression to be used for evaluating conditions of filters with a custom expression.
@@ -153,11 +175,11 @@ options:
             - Works only with >= Zabbix 3.2
     acknowledge_default_message:
         description:
-            - Acknowledge operation message text.
+            - Update operation (known as "Acknowledge operation" before Zabbix 4.0) message text.
             - Works only with >= Zabbix 3.4
     acknowledge_default_subject:
         description:
-            - Acknowledge operation message subject.
+            - Update operation (known as "Acknowledge operation" before Zabbix 4.0) message subject.
             - Works only with >= Zabbix 3.4
     operations:
         type: list
@@ -201,16 +223,41 @@ options:
             send_to_users:
                 type: list
                 description:
-                    - Users to send messages to.
+                    - Users (usernames or aliases) to send messages to.
             message:
                 description:
                     - Operation message text.
+                    - Will check the 'default message' and use the text from I(default_message) if this and I(default_subject) are not specified
             subject:
                 description:
                     - Operation message subject.
+                    - Will check the 'default message' and use the text from I(default_subject) if this and I(default_subject) are not specified
             media_type:
                 description:
                     - Media type that will be used to send the message.
+                    - Set to C(all) for all media types
+                default: 'all'
+            operation_condition:
+                type: 'str'
+                description:
+                    - The action operation condition object defines a condition that must be met to perform the current operation.
+                choices:
+                    - acknowledged
+                    - not_acknowledged
+            host_groups:
+                type: list
+                description:
+                    - List of host groups host should be added to.
+                    - Required when I(type=add_to_host_group) or I(type=remove_from_host_group).
+            templates:
+                type: list
+                description:
+                    - List of templates host should be linked to.
+                    - Required when I(type=link_to_template) or I(type=unlink_from_template).
+            inventory:
+                description:
+                    - Host inventory mode.
+                    - Required when I(type=set_host_inventory_mode).
             command_type:
                 description:
                     - Type of operation command.
@@ -228,7 +275,7 @@ options:
             execute_on:
                 description:
                     - Target on which the custom script operation command will be executed.
-                    - Required when I(type=remote_command) and I(command_type=custom_script)
+                    - Required when I(type=remote_command) and I(command_type=custom_script).
                 choices:
                     - agent
                     - server
@@ -236,53 +283,54 @@ options:
             run_on_groups:
                 description:
                     - Host groups to run remote commands on.
-                    - Required when I(type=remote_command) if I(run_on_hosts) is not set
+                    - Required when I(type=remote_command) if I(run_on_hosts) is not set.
             run_on_hosts:
                 description:
-                    - Hosts to run remote commands on
-                    - Required when I(type=remote_command) if I(run_on_groups) is not set
+                    - Hosts to run remote commands on.
+                    - Required when I(type=remote_command) if I(run_on_groups) is not set.
+                    - If set to 0 the command will be run on the current host.
             ssh_auth_type:
                 description:
                     - Authentication method used for SSH commands.
-                    - Required when I(type=remote_command) and I(command_type=ssh)
+                    - Required when I(type=remote_command) and I(command_type=ssh).
                 choices:
                     - password
                     - public_key
             ssh_privatekey_file:
                 description:
                     - Name of the private key file used for SSH commands with public key authentication.
-                    - Required when I(type=remote_command) and I(command_type=ssh)
+                    - Required when I(type=remote_command) and I(command_type=ssh).
             ssh_publickey_file:
                 description:
                     - Name of the public key file used for SSH commands with public key authentication.
-                    - Required when I(type=remote_command) and I(command_type=ssh)
+                    - Required when I(type=remote_command) and I(command_type=ssh).
             username:
                 description:
                     - User name used for authentication.
-                    - Required when I(type=remote_command) and I(command_type in [ssh, telnet])
+                    - Required when I(type=remote_command) and I(command_type in [ssh, telnet]).
             password:
                 description:
                     - Password used for authentication.
-                    - Required when I(type=remote_command) and I(command_type in [ssh, telnet])
+                    - Required when I(type=remote_command) and I(command_type in [ssh, telnet]).
             port:
                 description:
                     - Port number used for authentication.
-                    - Required when I(type=remote_command) and I(command_type in [ssh, telnet])
+                    - Required when I(type=remote_command) and I(command_type in [ssh, telnet]).
             script_name:
                 description:
                     - The name of script used for global script commands.
-                    - Required when I(type=remote_command) and I(command_type=global_script)
+                    - Required when I(type=remote_command) and I(command_type=global_script).
     recovery_operations:
         type: list
         description:
-            - List of recovery operations
-            - C(Suboptions) are the same as for I(operations)
+            - List of recovery operations.
+            - C(Suboptions) are the same as for I(operations).
             - Works only with >= Zabbix 3.2
     acknowledge_operations:
         type: list
         description:
-            - List of acknowledge operations
-            - C(Suboptions) are the same as for I(operations)
+            - List of acknowledge operations.
+            - C(Suboptions) are the same as for I(operations).
             - Works only with >= Zabbix 3.4
 
 notes:
@@ -627,6 +675,8 @@ class Zapi(object):
 
         """
         try:
+            if str(mediatype_name).lower() == 'all':
+                return '0'
             mediatype_list = self._zapi.mediatype.get({
                 'output': 'extend',
                 'selectInventory': 'extend',
@@ -635,7 +685,7 @@ class Zapi(object):
             if len(mediatype_list) < 1:
                 self._module.fail_json(msg="Media type not found: %s" % mediatype_name)
             else:
-                return mediatype_list[0]
+                return mediatype_list[0]['mediatypeid']
         except Exception as e:
             self._module.fail_json(msg="Failed to get mediatype '%s': %s" % (mediatype_name, e))
 
@@ -730,7 +780,8 @@ class Action(object):
         Returns:
             dict: dictionary of specified parameters
         """
-        return {
+
+        _params = {
             'name': kwargs['name'],
             'eventsource': to_numeric_value([
                 'trigger',
@@ -752,6 +803,13 @@ class Action(object):
                 'enabled',
                 'disabled'], kwargs['status'])
         }
+        if kwargs['event_source'] == 'trigger':
+            if float(self._zapi.api_version().rsplit('.', 1)[0]) >= 4.0:
+                _params['pause_suppressed'] = '1' if kwargs['pause_in_maintenance'] else '0'
+            else:
+                _params['maintenance_mode'] = '1' if kwargs['pause_in_maintenance'] else '0'
+
+        return _params
 
     def check_difference(self, **kwargs):
         """Check difference between action and user specified parameters.
@@ -766,12 +824,6 @@ class Action(object):
         parameters = convert_unicode_to_str(self._construct_parameters(**kwargs))
         change_parameters = {}
         _diff = cleanup_data(compare_dictionaries(parameters, existing_action, change_parameters))
-        if ('recovery_operations' in cleanup_data(existing_action) and
-           'acknowledge_operations' not in cleanup_data(parameters)):
-            _diff['recovery_operations'] = []
-        if ('acknowledge_operations' in cleanup_data(existing_action) and
-           'acknowledge_operations' not in cleanup_data(parameters)):
-            _diff['acknowledge_operations'] = []
         return _diff
 
     def update_action(self, **kwargs):
@@ -872,10 +924,10 @@ class Operations(object):
         """
         try:
             return {
-                'default_msg': '0' if 'message' in operation or 'subject' in operation else '1',
+                'default_msg': '0' if operation.get('message') is not None or operation.get('subject')is not None else '1',
                 'mediatypeid': self._zapi_wrapper.get_mediatype_by_mediatype_name(
                     operation.get('media_type')
-                )['mediatypeid'] if operation.get('media_type') is not None else None,
+                ) if operation.get('media_type') is not None else '0',
                 'message': operation.get('message'),
                 'subject': operation.get('subject'),
             }
@@ -889,7 +941,7 @@ class Operations(object):
             operation: operation to construct the message user
 
         Returns:
-            list: constructed operation message user or None if oprtation not found
+            list: constructed operation message user or None if operation not found
         """
         if operation.get('send_to_users') is None:
             return None
@@ -1017,8 +1069,30 @@ class Operations(object):
         """
         return {'inventory_mode': operation.get('inventory')}
 
+    def _construct_opconditions(self, operation):
+        """Construct operation conditions.
+
+        Args:
+            operation: operation to construct the conditions
+
+        Returns:
+            list: constructed operation conditions
+        """
+        _opcond = operation.get('operation_condition')
+        if _opcond is not None:
+            if _opcond == 'acknowledged':
+                _value = '1'
+            elif _opcond == 'not_acknowledged':
+                _value = '0'
+            return [{
+                'conditiontype': '14',
+                'operator': '0',
+                'value': _value
+            }]
+        return []
+
     def construct_the_data(self, operations):
-        """Construct the oprtation data using helper methods.
+        """Construct the operation data using helper methods.
 
         Args:
             operation: operation to construct
@@ -1040,12 +1114,14 @@ class Operations(object):
                 constructed_operation['opmessage'] = self._construct_opmessage(op)
                 constructed_operation['opmessage_usr'] = self._construct_opmessage_usr(op)
                 constructed_operation['opmessage_grp'] = self._construct_opmessage_grp(op)
+                constructed_operation['opconditions'] = self._construct_opconditions(op)
 
             # Send Command type
             if constructed_operation['operationtype'] == '1':
                 constructed_operation['opcommand'] = self._construct_opcommand(op)
                 constructed_operation['opcommand_hst'] = self._construct_opcommand_hst(op)
                 constructed_operation['opcommand_grp'] = self._construct_opcommand_grp(op)
+                constructed_operation['opconditions'] = self._construct_opconditions(op)
 
             # Add to/Remove from host group
             if constructed_operation['operationtype'] in ('4', '5'):
@@ -1156,6 +1232,7 @@ class AcknowledgeOperations(Operations):
                 None,
                 None,
                 None,
+                None,
                 "notify_all_involved"], operation['type']
             )
         except Exception as e:
@@ -1205,11 +1282,11 @@ class Filter(object):
         self._zapi = zbx
         self._zapi_wrapper = zapi_wrapper
 
-    def _construct_evaltype(self, _eval, _conditions):
+    def _construct_evaltype(self, _eval_type, _formula, _conditions):
         """Construct the eval type
 
         Args:
-            _eval: zabbix condition evaluation formula
+            _formula: zabbix condition evaluation formula
             _conditions: list of conditions to check
 
         Returns:
@@ -1220,9 +1297,37 @@ class Filter(object):
                 'evaltype': '0',
                 'formula': None
             }
+        if _eval_type == 'andor':
+            return {
+                'evaltype': '0',
+                'formula': None
+            }
+        if _eval_type == 'and':
+            return {
+                'evaltype': '1',
+                'formula': None
+            }
+        if _eval_type == 'or':
+            return {
+                'evaltype': '2',
+                'formula': None
+            }
+        if _eval_type == 'custom_expression':
+            if _formula is not None:
+                return {
+                    'evaltype': '3',
+                    'formula': _formula
+                }
+            else:
+                self._module.fail_json(msg="'formula' is required when 'eval_type' is set to 'custom_expression'")
+        if _formula is not None:
+            return {
+                'evaltype': '3',
+                'formula': _formula
+            }
         return {
-            'evaltype': '3',
-            'formula': _eval
+            'evaltype': '0',
+            'formula': None
         }
 
     def _construct_conditiontype(self, _condition):
@@ -1386,12 +1491,12 @@ class Filter(object):
         except Exception as e:
             self._module.fail_json(
                 msg="""Unsupported value '%s' for specified condition type.
-                       Check out Zabbix API documetation for supported values for
+                       Check out Zabbix API documentation for supported values for
                        condition type '%s' at
                        https://www.zabbix.com/documentation/3.4/manual/api/reference/action/object#action_filter_condition""" % (value, conditiontype)
             )
 
-    def construct_the_data(self, _formula, _conditions):
+    def construct_the_data(self, _eval_type, _formula, _conditions):
         """Construct the user defined filter conditions to fit the Zabbix API
         requirements operations data using helper methods.
 
@@ -1416,6 +1521,7 @@ class Filter(object):
                 "operator": self._construct_operator(cond)
             })
         _constructed_evaltype = self._construct_evaltype(
+            _eval_type,
             _formula,
             constructed_data['conditions']
         )
@@ -1541,6 +1647,7 @@ def cleanup_data(obj):
 def main():
     """Main ansible module function
     """
+
     module = AnsibleModule(
         argument_spec=dict(
             server_url=dict(type='str', required=True, aliases=['url']),
@@ -1555,17 +1662,303 @@ def main():
             event_source=dict(type='str', required=True, choices=['trigger', 'discovery', 'auto_registration', 'internal']),
             state=dict(type='str', required=False, default='present', choices=['present', 'absent']),
             status=dict(type='str', required=False, default='enabled', choices=['enabled', 'disabled']),
-            default_message=dict(type='str', required=False, default=None),
-            default_subject=dict(type='str', required=False, default=None),
-            recovery_default_message=dict(type='str', required=False, default=None),
-            recovery_default_subject=dict(type='str', required=False, default=None),
-            acknowledge_default_message=dict(type='str', required=False, default=None),
-            acknowledge_default_subject=dict(type='str', required=False, default=None),
-            conditions=dict(type='list', required=False, default=None),
+            pause_in_maintenance=dict(type='bool', required=False, default=True),
+            default_message=dict(type='str', required=False, default=''),
+            default_subject=dict(type='str', required=False, default=''),
+            recovery_default_message=dict(type='str', required=False, default=''),
+            recovery_default_subject=dict(type='str', required=False, default=''),
+            acknowledge_default_message=dict(type='str', required=False, default=''),
+            acknowledge_default_subject=dict(type='str', required=False, default=''),
+            conditions=dict(
+                type='list',
+                required=False,
+                elements='dict',
+                options=dict(
+                    formulaid=dict(type='str', required=False),
+                    operator=dict(type='str', required=True),
+                    type=dict(type='str', required=True),
+                    value=dict(type='str', required=True),
+                    value2=dict(type='str', required=False)
+                )
+            ),
             formula=dict(type='str', required=False, default=None),
-            operations=dict(type='list', required=False, default=None),
-            recovery_operations=dict(type='list', required=False, default=None),
-            acknowledge_operations=dict(type='list', required=False, default=None)
+            eval_type=dict(type='str', required=False, default=None, choices=['andor', 'and', 'or', 'custom_expression']),
+            operations=dict(
+                type='list',
+                required=False,
+                elements='dict',
+                options=dict(
+                    type=dict(
+                        type='str',
+                        required=True,
+                        choices=[
+                            'send_message',
+                            'remote_command',
+                            'add_host',
+                            'remove_host',
+                            'add_to_host_group',
+                            'remove_from_host_group',
+                            'link_to_template',
+                            'unlink_from_template',
+                            'enable_host',
+                            'disable_host',
+                            'set_host_inventory_mode',
+                        ]
+                    ),
+                    esc_period=dict(type='int', required=False),
+                    esc_step_from=dict(type='int', required=False, default=1),
+                    esc_step_to=dict(type='int', required=False, default=1),
+                    operation_condition=dict(
+                        type='str',
+                        required=False,
+                        default=None,
+                        choices=['acknowledged', 'not_acknowledged']
+                    ),
+                    # when type is remote_command
+                    command_type=dict(
+                        type='str',
+                        required=False,
+                        choices=[
+                            'custom_script',
+                            'ipmi',
+                            'ssh',
+                            'telnet',
+                            'global_script'
+                        ]
+                    ),
+                    command=dict(type='str', required=False),
+                    execute_on=dict(
+                        type='str',
+                        required=False,
+                        choices=['agent', 'server', 'proxy']
+                    ),
+                    password=dict(type='str', required=False),
+                    port=dict(type='int', required=False),
+                    run_on_groups=dict(type='list', required=False),
+                    run_on_hosts=dict(type='list', required=False),
+                    script_name=dict(type='str', required=False),
+                    ssh_auth_type=dict(
+                        type='str',
+                        required=False,
+                        default='password',
+                        choices=['password', 'public_key']
+                    ),
+                    ssh_privatekey_file=dict(type='str', required=False),
+                    ssh_publickey_file=dict(type='str', required=False),
+                    username=dict(type='str', required=False),
+                    # when type is send_message
+                    media_type=dict(type='str', required=False),
+                    subject=dict(type='str', required=False),
+                    message=dict(type='str', required=False),
+                    send_to_groups=dict(type='list', required=False),
+                    send_to_users=dict(type='list', required=False),
+                    # when type is add_to_host_group or remove_from_host_group
+                    host_groups=dict(type='list', required=False),
+                    # when type is set_host_inventory_mode
+                    inventory=dict(type='str', required=False),
+                    # when type is link_to_template or unlink_from_template
+                    templates=dict(type='list', required=False)
+                ),
+                required_if=[
+                    ['type', 'remote_command', ['command_type']],
+                    ['type', 'remote_command', ['run_on_groups', 'run_on_hosts'], True],
+                    ['command_type', 'custom_script', [
+                        'command',
+                        'execute_on'
+                    ]],
+                    ['command_type', 'ipmi', ['command']],
+                    ['command_type', 'ssh', [
+                        'command',
+                        'password',
+                        'username',
+                        'port',
+                        'ssh_auth_type',
+                        'ssh_privatekey_file',
+                        'ssh_publickey_file'
+                    ]],
+                    ['command_type', 'telnet', [
+                        'command',
+                        'password',
+                        'username',
+                        'port'
+                    ]],
+                    ['command_type', 'global_script', ['script_name']],
+                    ['type', 'add_to_host_group', ['host_groups']],
+                    ['type', 'remove_from_host_group', ['host_groups']],
+                    ['type', 'link_to_template', ['templates']],
+                    ['type', 'unlink_from_template', ['templates']],
+                    ['type', 'set_host_inventory_mode', ['inventory']],
+                    ['type', 'send_message', ['send_to_users', 'send_to_groups'], True]
+                ]
+            ),
+            recovery_operations=dict(
+                type='list',
+                required=False,
+                default=[],
+                elements='dict',
+                options=dict(
+                    type=dict(
+                        type='str',
+                        required=True,
+                        choices=[
+                            'send_message',
+                            'remote_command',
+                            'notify_all_involved'
+                        ]
+                    ),
+                    # when type is remote_command
+                    command_type=dict(
+                        type='str',
+                        required=False,
+                        choices=[
+                            'custom_script',
+                            'ipmi',
+                            'ssh',
+                            'telnet',
+                            'global_script'
+                        ]
+                    ),
+                    command=dict(type='str', required=False),
+                    execute_on=dict(
+                        type='str',
+                        required=False,
+                        choices=['agent', 'server', 'proxy']
+                    ),
+                    password=dict(type='str', required=False),
+                    port=dict(type='int', required=False),
+                    run_on_groups=dict(type='list', required=False),
+                    run_on_hosts=dict(type='list', required=False),
+                    script_name=dict(type='str', required=False),
+                    ssh_auth_type=dict(
+                        type='str',
+                        required=False,
+                        default='password',
+                        choices=['password', 'public_key']
+                    ),
+                    ssh_privatekey_file=dict(type='str', required=False),
+                    ssh_publickey_file=dict(type='str', required=False),
+                    username=dict(type='str', required=False),
+                    # when type is send_message
+                    media_type=dict(type='str', required=False),
+                    subject=dict(type='str', required=False),
+                    message=dict(type='str', required=False),
+                    send_to_groups=dict(type='list', required=False),
+                    send_to_users=dict(type='list', required=False),
+                ),
+                required_if=[
+                    ['type', 'remote_command', ['command_type']],
+                    ['type', 'remote_command', [
+                        'run_on_groups',
+                        'run_on_hosts'
+                    ], True],
+                    ['command_type', 'custom_script', [
+                        'command',
+                        'execute_on'
+                    ]],
+                    ['command_type', 'ipmi', ['command']],
+                    ['command_type', 'ssh', [
+                        'command',
+                        'password',
+                        'username',
+                        'port',
+                        'ssh_auth_type',
+                        'ssh_privatekey_file',
+                        'ssh_publickey_file'
+                    ]],
+                    ['command_type', 'telnet', [
+                        'command',
+                        'password',
+                        'username',
+                        'port'
+                    ]],
+                    ['command_type', 'global_script', ['script_name']],
+                    ['type', 'send_message', ['send_to_users', 'send_to_groups'], True]
+                ]
+            ),
+            acknowledge_operations=dict(
+                type='list',
+                required=False,
+                default=[],
+                elements='dict',
+                options=dict(
+                    type=dict(
+                        type='str',
+                        required=True,
+                        choices=[
+                            'send_message',
+                            'remote_command',
+                            'notify_all_involved'
+                        ]
+                    ),
+                    # when type is remote_command
+                    command_type=dict(
+                        type='str',
+                        required=False,
+                        choices=[
+                            'custom_script',
+                            'ipmi',
+                            'ssh',
+                            'telnet',
+                            'global_script'
+                        ]
+                    ),
+                    command=dict(type='str', required=False),
+                    execute_on=dict(
+                        type='str',
+                        required=False,
+                        choices=['agent', 'server', 'proxy']
+                    ),
+                    password=dict(type='str', required=False),
+                    port=dict(type='int', required=False),
+                    run_on_groups=dict(type='list', required=False),
+                    run_on_hosts=dict(type='list', required=False),
+                    script_name=dict(type='str', required=False),
+                    ssh_auth_type=dict(
+                        type='str',
+                        required=False,
+                        default='password',
+                        choices=['password', 'public_key']
+                    ),
+                    ssh_privatekey_file=dict(type='str', required=False),
+                    ssh_publickey_file=dict(type='str', required=False),
+                    username=dict(type='str', required=False),
+                    # when type is send_message
+                    media_type=dict(type='str', required=False),
+                    subject=dict(type='str', required=False),
+                    message=dict(type='str', required=False),
+                    send_to_groups=dict(type='list', required=False),
+                    send_to_users=dict(type='list', required=False),
+                ),
+                required_if=[
+                    ['type', 'remote_command', ['command_type']],
+                    ['type', 'remote_command', [
+                        'run_on_groups',
+                        'run_on_hosts'
+                    ], True],
+                    ['command_type', 'custom_script', [
+                        'command',
+                        'execute_on'
+                    ]],
+                    ['command_type', 'ipmi', ['command']],
+                    ['command_type', 'ssh', [
+                        'command',
+                        'password',
+                        'username',
+                        'port',
+                        'ssh_auth_type',
+                        'ssh_privatekey_file',
+                        'ssh_publickey_file'
+                    ]],
+                    ['command_type', 'telnet', [
+                        'command',
+                        'password',
+                        'username',
+                        'port'
+                    ]],
+                    ['command_type', 'global_script', ['script_name']],
+                    ['type', 'send_message', ['send_to_users', 'send_to_groups'], True]
+                ]
+            )
         ),
         supports_check_mode=True
     )
@@ -1585,6 +1978,7 @@ def main():
     event_source = module.params['event_source']
     state = module.params['state']
     status = module.params['status']
+    pause_in_maintenance = module.params['pause_in_maintenance']
     default_message = module.params['default_message']
     default_subject = module.params['default_subject']
     recovery_default_message = module.params['recovery_default_message']
@@ -1593,6 +1987,7 @@ def main():
     acknowledge_default_subject = module.params['acknowledge_default_subject']
     conditions = module.params['conditions']
     formula = module.params['formula']
+    eval_type = module.params['eval_type']
     operations = module.params['operations']
     recovery_operations = module.params['recovery_operations']
     acknowledge_operations = module.params['acknowledge_operations']
@@ -1626,6 +2021,7 @@ def main():
                 event_source=event_source,
                 esc_period=esc_period,
                 status=status,
+                pause_in_maintenance=pause_in_maintenance,
                 default_message=default_message,
                 default_subject=default_subject,
                 recovery_default_message=recovery_default_message,
@@ -1635,7 +2031,7 @@ def main():
                 operations=ops.construct_the_data(operations),
                 recovery_operations=recovery_ops.construct_the_data(recovery_operations),
                 acknowledge_operations=acknowledge_ops.construct_the_data(acknowledge_operations),
-                conditions=fltr.construct_the_data(formula, conditions)
+                conditions=fltr.construct_the_data(eval_type, formula, conditions)
             )
 
             if difference == {}:
@@ -1655,6 +2051,7 @@ def main():
                 event_source=event_source,
                 esc_period=esc_period,
                 status=status,
+                pause_in_maintenance=pause_in_maintenance,
                 default_message=default_message,
                 default_subject=default_subject,
                 recovery_default_message=recovery_default_message,
@@ -1664,7 +2061,7 @@ def main():
                 operations=ops.construct_the_data(operations),
                 recovery_operations=recovery_ops.construct_the_data(recovery_operations),
                 acknowledge_operations=acknowledge_ops.construct_the_data(acknowledge_operations),
-                conditions=fltr.construct_the_data(formula, conditions)
+                conditions=fltr.construct_the_data(eval_type, formula, conditions)
             )
             module.exit_json(changed=True, msg="Action created: %s, ID: %s" % (name, action_id))
 
