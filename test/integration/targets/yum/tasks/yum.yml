@@ -394,7 +394,7 @@
 
 - name: install group
   yum:
-    name: "@Development Tools"
+    name: "@Custom Group"
     state: present
   register: yum_result
 
@@ -413,7 +413,7 @@
 
 - name: install the group again
   yum:
-    name: "@Development Tools"
+    name: "@Custom Group"
     state: present
   register: yum_result
 
@@ -433,7 +433,7 @@
 - name: install the group again but also with a package that is not yet installed
   yum:
     name:
-      - "@Development Tools"
+      - "@Custom Group"
       - sos
     state: present
   register: yum_result
@@ -453,7 +453,7 @@
 
 - name: try to install the group again, with --check to check 'changed'
   yum:
-    name: "@Development Tools"
+    name: "@Custom Group"
     state: present
   check_mode: yes
   register: yum_result
@@ -692,6 +692,40 @@
   set_fact:
     yum_version: "{%- if item.yumstate == 'installed' -%}{{ item.version }}{%- else -%}{{ yum_version }}{%- endif -%}"
   with_items: "{{ yum_version.results }}"
+
+- name: Ensure double uninstall of wildcard globs works
+  block:
+  - name: "Install lohit-*-fonts"
+    yum:
+      name: "lohit-*-fonts"
+      state: present
+
+  - name: "Remove lohit-*-fonts (1st time)"
+    yum:
+      name: "lohit-*-fonts"
+      state: absent
+    register: remove_lohit_fonts_1
+
+  - name: "Verify lohit-*-fonts (1st time)"
+    assert:
+      that:
+        - "remove_lohit_fonts_1 is changed"
+        - "'msg' in remove_lohit_fonts_1"
+        - "'results' in remove_lohit_fonts_1"
+
+  - name: "Remove lohit-*-fonts (2nd time)"
+    yum:
+      name: "lohit-*-fonts"
+      state: absent
+    register: remove_lohit_fonts_2
+
+  - name: "Verify lohit-*-fonts (2nd time)"
+    assert:
+      that:
+        - "remove_lohit_fonts_2 is not changed"
+        - "'msg' in remove_lohit_fonts_2"
+        - "'results' in remove_lohit_fonts_2"
+        - "'lohit-*-fonts is not installed' in remove_lohit_fonts_2['results']"
 
 - block:
   - name: uninstall bc

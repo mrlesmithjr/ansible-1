@@ -265,17 +265,34 @@ class WapiModule(WapiBase):
                 else:
                     proposed_object[key] = self.module.params[key]
 
+        # If configure_by_dns is set to False, then delete the default dns set in the param else throw exception
+        if not proposed_object.get('configure_for_dns') and proposed_object.get('view') == 'default'\
+                and ib_obj_type == NIOS_HOST_RECORD:
+            del proposed_object['view']
+        elif not proposed_object.get('configure_for_dns') and proposed_object.get('view') != 'default'\
+                and ib_obj_type == NIOS_HOST_RECORD:
+            self.module.fail_json(msg='DNS Bypass is not allowed if DNS view is set other than \'default\'')
+
         if ib_obj_ref:
             if len(ib_obj_ref) > 1:
                 for each in ib_obj_ref:
-                    if ('ipv4addr' in each) and ('ipv4addr' in proposed_object)\
-                            and each['ipv4addr'] == proposed_object['ipv4addr']:
+                    # To check for existing A_record with same name with input A_record by IP
+                    if each.get('ipv4addr') and each.get('ipv4addr') == proposed_object.get('ipv4addr'):
                         current_object = each
+                    # To check for existing Host_record with same name with input Host_record by IP
+                    elif each.get('ipv4addrs')[0].get('ipv4addr') and each.get('ipv4addrs')[0].get('ipv4addr')\
+                            == proposed_object.get('ipv4addrs')[0].get('ipv4addr'):
+                        current_object = each
+                    # Else set the current_object with input value
+                    else:
+                        current_object = obj_filter
+                        ref = None
             else:
                 current_object = ib_obj_ref[0]
             if 'extattrs' in current_object:
                 current_object['extattrs'] = flatten_extattrs(current_object['extattrs'])
-            ref = current_object.pop('_ref')
+            if current_object.get('_ref'):
+                ref = current_object.pop('_ref')
         else:
             current_object = obj_filter
             ref = None
@@ -312,8 +329,8 @@ class WapiModule(WapiBase):
                 if (ib_obj_type in (NIOS_HOST_RECORD, NIOS_NETWORK_VIEW, NIOS_DNS_VIEW)):
                     proposed_object = self.on_update(proposed_object, ib_spec)
                     res = self.update_object(ref, proposed_object)
-                if (ib_obj_type in (NIOS_A_RECORD, NIOS_AAAA_RECORD)):
-                    # popping 'view' key as update of 'view' is not supported with respect to a:record/aaaa:record
+                if (ib_obj_type in (NIOS_A_RECORD, NIOS_AAAA_RECORD, NIOS_PTR_RECORD, NIOS_SRV_RECORD)):
+                    # popping 'view' key as update of 'view' is not supported with respect to a:record/aaaa:record/srv:record/ptr:record
                     proposed_object = self.on_update(proposed_object, ib_spec)
                     del proposed_object['view']
                     res = self.update_object(ref, proposed_object)

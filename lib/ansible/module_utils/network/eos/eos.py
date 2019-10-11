@@ -31,7 +31,7 @@ import json
 import os
 import time
 
-from ansible.module_utils._text import to_text, to_native
+from ansible.module_utils._text import to_text
 from ansible.module_utils.basic import env_fallback
 from ansible.module_utils.connection import Connection, ConnectionError
 from ansible.module_utils.network.common.config import NetworkConfig, dumps
@@ -82,10 +82,6 @@ eos_argument_spec.update(eos_top_spec)
 
 def get_provider_argspec():
     return eos_provider_spec
-
-
-def check_args(module, warnings):
-    pass
 
 
 def load_params(module):
@@ -449,10 +445,10 @@ class HttpApi:
         def run_queue(queue, output):
             try:
                 response = to_list(self._connection.send_request(queue, output=output))
-            except Exception as exc:
+            except ConnectionError as exc:
                 if check_rc:
                     raise
-                return to_text(exc)
+                return to_list(to_text(exc))
 
             if output == 'json':
                 response = [json.loads(item) for item in response]
@@ -599,9 +595,12 @@ def is_json(cmd):
 
 
 def is_local_eapi(module):
-    transport = module.params['transport']
-    provider_transport = (module.params['provider'] or {}).get('transport')
-    return 'eapi' in (transport, provider_transport)
+    transports = []
+    transports.append(module.params.get('transport', ""))
+    provider = module.params.get('provider')
+    if provider:
+        transports.append(provider.get('transport', ""))
+    return 'eapi' in transports
 
 
 def to_command(module, commands):

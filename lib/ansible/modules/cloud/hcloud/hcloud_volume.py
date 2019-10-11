@@ -41,7 +41,7 @@ options:
         type: str
     size:
         description:
-            - The size of the Block Volume.
+            - The size of the Block Volume in GB.
             - Required if volume does not yet exists.
         type: int
     automount:
@@ -126,10 +126,16 @@ hcloud_volume:
             returned: Always
             sample: my-volume
         size:
-            description: Size in MB of the volume
+            description: Size in GB of the volume
             type: int
             returned: Always
             sample: 1337
+        linux_device:
+            description: Path to the device that contains the volume.
+            returned: always
+            type: src
+            sample: /dev/disk/by-id/scsi-0HC_Volume_12345
+            version_added: "2.10"
         location:
             description: Location name where the volume is located at
             type: string
@@ -178,6 +184,7 @@ class AnsibleHcloudVolume(Hcloud):
             "location": to_native(self.hcloud_volume.location.name),
             "labels": self.hcloud_volume.labels,
             "server": to_native(server_name),
+            "linux_device": to_native(self.hcloud_volume.linux_device),
         }
 
     def _get_volume(self):
@@ -232,7 +239,7 @@ class AnsibleHcloudVolume(Hcloud):
         server_name = self.module.params.get("server")
         if server_name:
             server = self.client.servers.get_by_name(server_name)
-            if self.hcloud_volume.server != server:
+            if self.hcloud_volume.server is None or self.hcloud_volume.server.name != server.name:
                 if not self.module.check_mode:
                     automount = self.module.params.get("automount", False)
                     self.hcloud_volume.attach(server, automount=automount).wait_until_finished()

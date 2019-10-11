@@ -376,11 +376,11 @@ EXAMPLES = '''
 
 # Import template
 - ovirt_template:
-  state: imported
-  name: mytemplate
-  export_domain: myexport
-  storage_domain: mystorage
-  cluster: mycluster
+    state: imported
+    name: mytemplate
+    export_domain: myexport
+    storage_domain: mystorage
+    cluster: mycluster
 
 # Remove template
 - ovirt_template:
@@ -454,7 +454,7 @@ EXAMPLES = '''
     storage_domain: mystorage
     cluster: mycluster
 
-# Edit template subeversion
+# Edit template subversion
 - ovirt_template:
     cluster: mycluster
     name: mytemplate
@@ -463,7 +463,7 @@ EXAMPLES = '''
         number: 2
         name: subversion
 
-# Create new template subeversion
+# Create new template subversion
 - ovirt_template:
     cluster: mycluster
     name: mytemplate
@@ -1022,6 +1022,8 @@ def main():
                 template = templates_module.wait_for_import(
                     condition=lambda t: t.status == otypes.TemplateStatus.OK
                 )
+                if template is None:
+                    raise TimeoutError("Image/template '%s' could not be imported. Try again with larger timeout." % template_name)
                 ret = templates_module.create(result_state=otypes.TemplateStatus.OK)
                 ret = {
                     'changed': True,

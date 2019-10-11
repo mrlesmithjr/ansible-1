@@ -14,9 +14,9 @@
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
-    name: "{{ item }}"
+    name: "{{ item.name }}"
     datacenter: "{{ dc1 }}"
-  with_items: "{{ infra.vm_list }}"
+  with_items: "{{ virtual_machines }}"
   register: folders
 
 - debug: var=item
@@ -32,17 +32,17 @@
   with_items: "{{ folders.results }}"
 
 - name: get fact of the first VM
-  vmware_guest_facts:
+  vmware_guest_info:
     validate_certs: False
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     datacenter: "{{ dc1 }}"
-    name: "{{ infra.vm_list[0] }}"
-    folder: "{{ f0 }}"
-  register: guest_facts_0001
+    name: "{{ virtual_machines[0].name }}"
+    folder: "{{ virtual_machines[0].folder }}"
+  register: guest_info_0001
 
-- debug: var=guest_facts_0001
+- debug: var=guest_info_0001
 
 - name: find folders for each vm using UUID
   vmware_guest_find:
@@ -50,7 +50,7 @@
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
-    uuid: "{{ guest_facts_0001['instance']['hw_product_uuid'] }}"
+    uuid: "{{ guest_info_0001['instance']['hw_product_uuid'] }}"
   register: folder_uuid
 
 - debug: var=folder_uuid

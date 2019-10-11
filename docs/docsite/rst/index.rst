@@ -69,6 +69,7 @@ Ansible releases a new major release of Ansible approximately three to four time
    reference_appendices/galaxy
    reference_appendices/common_return_values
    reference_appendices/config
+   reference_appendices/general_precedence
    reference_appendices/YAMLSyntax
    reference_appendices/python_3_support
    reference_appendices/interpreter_discovery
@@ -80,6 +81,7 @@ Ansible releases a new major release of Ansible approximately three to four time
    reference_appendices/module_utils
    reference_appendices/special_variables
    reference_appendices/tower
+   reference_appendices/logging
 
 
 .. toctree::
